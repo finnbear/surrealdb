@@ -6,10 +6,11 @@ use geo::algorithm::area::Area;
 use geo::algorithm::bearing::Bearing;
 use geo::algorithm::centroid::Centroid;
 use geo::algorithm::haversine_distance::HaversineDistance;
+use crate::fnc::args::Args;
 
-pub fn area(_: &Context, mut args: Vec<Value>) -> Result<Value, Error> {
-	match args.remove(0) {
-		Value::Geometry(v) => match v {
+pub fn area(_: &Context, mut args: Args) -> Result<Value, Error> {
+	if let Some(Value::Geometry(v)) = args.one() {
+		match v {
 			Geometry::Point(v) => Ok(v.signed_area().into()),
 			Geometry::Line(v) => Ok(v.signed_area().into()),
 			Geometry::Polygon(v) => Ok(v.signed_area().into()),
@@ -19,8 +20,9 @@ pub fn area(_: &Context, mut args: Vec<Value>) -> Result<Value, Error> {
 			Geometry::Collection(v) => {
 				Ok(v.into_iter().collect::<geo::Geometry<f64>>().signed_area().into())
 			}
-		},
-		_ => Ok(Value::None),
+		}
+	} else {
+		args.finish("geo::area")
 	}
 }
 
