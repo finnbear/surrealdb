@@ -1,6 +1,49 @@
+use std::future;
+use std::future::Future;
 use crate::ctx::Context;
 use crate::err::Error;
 use crate::sql::value::Value;
+
+pub trait ArgCast: Sized {
+	fn from_value(value: Value) -> Result<Self, Error>;
+}
+
+impl ArgCast for Value {
+	fn from_value(value: Value) -> Result<Self, Error> {
+		Ok(value)
+	}
+}
+
+impl ArgCast for String {
+	fn from_value(value: Value) -> Result<Self, Error> {
+		Ok(value.as_string())
+	}
+}
+
+impl ArgCast for usize {
+	fn from_value(value: Value) -> Result<Self, Error> {
+		Ok(value.as_int() as usize)
+	}
+}
+
+pub trait Function {
+	type Fut: Future<Output = Result<Value, Error>>;
+	fn call(&self, name: &str, context: &Context, args: Vec<Value>) -> Self::Fut;
+}
+
+impl<F: Fn(Value) -> Result<Value, Error>> Function for F {
+	type Fut = future::Ready<Result<Value, Error>>;
+
+	fn call(&self, name: &str, _: &Context, args: Vec<Value>) -> Self::Fut {
+		future::ready(match <Vec<Value> as TryInto<[Value; 1]>>::try_into(args) {
+			Ok([arg]) => self(arg),
+			Err(_) => Err(Error::InvalidArguments {
+				name: name.to_owned(),
+				message: format!("Expected 1 argument.")
+			})
+		})
+	}
+}
 
 pub enum Args {
 	None,
