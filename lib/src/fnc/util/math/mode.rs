@@ -6,6 +6,6 @@ pub trait Mode {
 
 impl Mode for Vec<Number> {
 	fn mode(self) -> Number {
-		todo!()
+		let mut values = HashM
 	}
 }

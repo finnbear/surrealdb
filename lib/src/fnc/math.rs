@@ -158,7 +158,11 @@ pub fn top(_: &Context, mut args: Vec<Value>) -> Result<Value, Error> {
 	match args.remove(0) {
 		Value::Array(v) => {
 			let c = args.remove(0).as_int();
-			Ok(v.as_numbers().top(c).into())
+			Ok(if c as usize >= v.len() {
+				Value::None
+			} else {
+				v.as_numbers().top(c).into()
+			})
 		}
 		_ => Ok(Value::None),
 	}
