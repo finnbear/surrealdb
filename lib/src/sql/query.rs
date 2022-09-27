@@ -6,6 +6,7 @@ use serde::{Deserialize, Serialize};
 use std::fmt;
 use std::ops::Deref;
 use std::str;
+use crate::sql::ParseDepth;
 
 #[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize, Store)]
 pub struct Query(pub Statements);
@@ -23,7 +24,8 @@ impl fmt::Display for Query {
 	}
 }
 
-pub fn query(i: &str) -> IResult<&str, Query> {
+pub fn query(i: &str, d: ParseDepth) -> IResult<&str, Query> {
+	let d = d.dive()?;
 	let (i, v) = all_consuming(statements)(i)?;
 	Ok((i, Query(v)))
 }

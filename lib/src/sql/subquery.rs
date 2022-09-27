@@ -19,6 +19,7 @@ use nom::combinator::map;
 use serde::{Deserialize, Serialize};
 use std::cmp::Ordering;
 use std::fmt;
+use crate::sql::ParseDepth;
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub enum Subquery {
@@ -195,12 +196,14 @@ impl fmt::Display for Subquery {
 	}
 }
 
-pub fn subquery(i: &str) -> IResult<&str, Subquery> {
-	alt((subquery_ifelse, subquery_others))(i)
+pub fn subquery(i: &str, p: ParseDepth) -> IResult<&str, Subquery> {
+	let d = d.dive()?;
+	alt((subquery_ifelse, subquery_others))(i, d)
 }
 
-fn subquery_ifelse(i: &str) -> IResult<&str, Subquery> {
-	let (i, v) = map(ifelse, Subquery::Ifelse)(i)?;
+fn subquery_ifelse(i: &str, d: ParseDepth) -> IResult<&str, Subquery> {
+	let d = d.dive()?;
+	let (i, v) = map(ifelse, Subquery::Ifelse)(i, d)?;
 	Ok((i, v))
 }
 

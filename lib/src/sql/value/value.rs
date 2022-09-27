@@ -52,6 +52,7 @@ use std::iter::FromIterator;
 use std::ops;
 use std::ops::Deref;
 use std::str::FromStr;
+use crate::sql::ParseDepth;
 
 static MATCHER: Lazy<SkimMatcherV2> = Lazy::new(|| SkimMatcherV2::default().ignore_case());
 
@@ -1322,7 +1323,8 @@ pub fn what(i: &str) -> IResult<&str, Value> {
 	))(i)
 }
 
-pub fn json(i: &str) -> IResult<&str, Value> {
+pub fn json(i: &str, d: ParseDepth) -> IResult<&str, Value> {
+	let d = d.dive()?;
 	alt((
 		map(tag_no_case("NULL"), |_| Value::Null),
 		map(tag_no_case("true"), |_| Value::True),

@@ -8,6 +8,7 @@ use nom::character::complete::char;
 use nom::combinator::map;
 use serde::{Deserialize, Serialize};
 use std::fmt;
+use crate::sql::ParseDepth;
 
 #[derive(Clone, Debug, Eq, PartialEq, PartialOrd, Serialize, Deserialize)]
 pub struct Edges {
@@ -26,8 +27,9 @@ impl fmt::Display for Edges {
 	}
 }
 
-pub fn edges(i: &str) -> IResult<&str, Edges> {
-	let (i, from) = thing(i)?;
+pub fn edges(i: &str, d: ParseDepth) -> IResult<&str, Edges> {
+	let d = d.dive()?;
+	let (i, from) = thing(i, d)?;
 	let (i, dir) = dir(i)?;
 	let (i, what) = alt((simple, custom))(i)?;
 	Ok((

@@ -3,7 +3,7 @@ use crate::dbs::Options;
 use crate::dbs::Transaction;
 use crate::err::Error;
 use crate::sql::error::IResult;
-use crate::sql::idiom;
+use crate::sql::{idiom, ParseDepth};
 use crate::sql::idiom::Idiom;
 use crate::sql::part::Next;
 use crate::sql::part::Part;
@@ -80,7 +80,8 @@ impl fmt::Display for Param {
 	}
 }
 
-pub fn param(i: &str) -> IResult<&str, Param> {
+pub fn param(i: &str, d: ParseDepth) -> IResult<&str, Param> {
+	d.dive()?;
 	let (i, _) = char('$')(i)?;
 	let (i, v) = idiom::param(i)?;
 	Ok((i, Param::from(v)))

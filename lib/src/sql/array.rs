@@ -18,6 +18,7 @@ use std::fmt;
 use std::ops;
 use std::ops::Deref;
 use std::ops::DerefMut;
+use crate::sql::ParseDepth;
 
 #[derive(Clone, Debug, Default, Eq, Ord, PartialEq, PartialOrd, Deserialize)]
 pub struct Array(pub Vec<Value>);
@@ -330,10 +331,11 @@ impl Uniq<Array> for Array {
 
 // ------------------------------
 
-pub fn array(i: &str) -> IResult<&str, Array> {
+pub fn array(i: &str, d: ParseDepth) -> IResult<&str, Array> {
+	let d = d.dive()?;
 	let (i, _) = char('[')(i)?;
 	let (i, _) = mightbespace(i)?;
-	let (i, v) = separated_list0(commas, item)(i)?;
+	let (i, v) = separated_list0(commas, item)(i, d)?;
 	let (i, _) = mightbespace(i)?;
 	let (i, _) = opt(char(','))(i)?;
 	let (i, _) = mightbespace(i)?;

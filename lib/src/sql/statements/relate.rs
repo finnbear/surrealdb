@@ -27,6 +27,7 @@ use nom::combinator::opt;
 use nom::sequence::preceded;
 use serde::{Deserialize, Serialize};
 use std::fmt;
+use crate::sql::ParseDepth;
 
 #[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize, Store)]
 pub struct RelateStatement {
@@ -205,13 +206,14 @@ pub fn relate(i: &str) -> IResult<&str, RelateStatement> {
 	))
 }
 
-fn relate_o(i: &str) -> IResult<&str, (Table, Value, Value)> {
+fn relate_o(i: &str, d: ParseDepth) -> IResult<&str, (Table, Value, Value)> {
+	let d = d.dive()?;
 	let (i, from) = alt((
 		map(subquery, Value::from),
 		map(array, Value::from),
 		map(param, Value::from),
 		map(thing, Value::from),
-	))(i)?;
+	))(i, d)?;
 	let (i, _) = mightbespace(i)?;
 	let (i, _) = char('-')(i)?;
 	let (i, _) = char('>')(i)?;
@@ -230,13 +232,14 @@ fn relate_o(i: &str) -> IResult<&str, (Table, Value, Value)> {
 	Ok((i, (kind, from, with)))
 }
 
-fn relate_i(i: &str) -> IResult<&str, (Table, Value, Value)> {
+fn relate_i(i: &str, d: ParseDepth) -> IResult<&str, (Table, Value, Value)> {
+	let d = d.dive()?;
 	let (i, with) = alt((
 		map(subquery, Value::from),
 		map(array, Value::from),
 		map(param, Value::from),
 		map(thing, Value::from),
-	))(i)?;
+	))(i, d)?;
 	let (i, _) = mightbespace(i)?;
 	let (i, _) = char('<')(i)?;
 	let (i, _) = char('-')(i)?;

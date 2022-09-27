@@ -11,6 +11,7 @@ use nom::combinator::opt;
 use nom::multi::separated_list0;
 use serde::{Deserialize, Serialize};
 use std::fmt;
+use crate::sql::ParseDepth;
 
 #[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize, Store)]
 pub struct IfelseStatement {
@@ -67,8 +68,9 @@ impl fmt::Display for IfelseStatement {
 	}
 }
 
-pub fn ifelse(i: &str) -> IResult<&str, IfelseStatement> {
-	let (i, exprs) = separated_list0(split, exprs)(i)?;
+pub fn ifelse(i: &str, d: ParseDepth) -> IResult<&str, IfelseStatement> {
+	let d = d.dive()?;
+	let (i, exprs) = separated_list0(split, exprs)(i, d)?;
 	let (i, close) = opt(close)(i)?;
 	let (i, _) = shouldbespace(i)?;
 	let (i, _) = tag_no_case("END")(i)?;

@@ -14,6 +14,7 @@ use nom::character::complete::char;
 use serde::ser::SerializeStruct;
 use serde::{Deserialize, Serialize};
 use std::fmt;
+use crate::sql::ParseDepth;
 
 const SINGLE: char = '\'';
 const DOUBLE: char = '"';
@@ -106,7 +107,8 @@ impl Serialize for Thing {
 	}
 }
 
-pub fn thing(i: &str) -> IResult<&str, Thing> {
+pub fn thing(i: &str, d: ParseDepth) -> IResult<&str, Thing> {
+	let d = d.dive()?;
 	let (i, v) = thing_raw(i)?;
 	Ok((i, v))
 }

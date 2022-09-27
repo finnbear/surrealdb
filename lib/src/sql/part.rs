@@ -14,6 +14,7 @@ use nom::character::complete::char;
 use serde::{Deserialize, Serialize};
 use std::fmt;
 use std::str;
+use crate::sql::ParseDepth;
 
 #[derive(Clone, Debug, Eq, PartialEq, PartialOrd, Serialize, Deserialize)]
 pub enum Part {
@@ -191,8 +192,9 @@ pub fn filter(i: &str) -> IResult<&str, Part> {
 	Ok((i, Part::Where(v)))
 }
 
-pub fn thing(i: &str) -> IResult<&str, Part> {
-	let (i, v) = thing_raw(i)?;
+pub fn thing(i: &str, d: ParseDepth) -> IResult<&str, Part> {
+	let d = d.dive()?;
+	let (i, v) = thing_raw(i, d)?;
 	Ok((i, Part::Thing(v)))
 }
 
