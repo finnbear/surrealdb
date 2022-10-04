@@ -20,6 +20,7 @@ use std::str::FromStr;
 #[derive(Clone, Debug, Deserialize)]
 pub enum Number {
 	Int(i64),
+	/// Never NaN.
 	Float(f64),
 	Decimal(BigDecimal),
 }
@@ -87,18 +88,6 @@ impl From<u64> for Number {
 impl From<usize> for Number {
 	fn from(i: usize) -> Self {
 		Number::Int(i as i64)
-	}
-}
-
-impl From<f32> for Number {
-	fn from(f: f32) -> Self {
-		Number::Float(f as f64)
-	}
-}
-
-impl From<f64> for Number {
-	fn from(f: f64) -> Self {
-		Number::Float(f as f64)
 	}
 }
 
@@ -261,7 +250,7 @@ impl Number {
 	pub fn abs(self) -> Self {
 		match self {
 			Number::Int(v) => v.abs().into(),
-			Number::Float(v) => v.abs().into(),
+			Number::Float(v) => Self::Float(v.abs()),
 			Number::Decimal(v) => v.abs().into(),
 		}
 	}
@@ -269,7 +258,7 @@ impl Number {
 	pub fn ceil(self) -> Self {
 		match self {
 			Number::Int(v) => v.into(),
-			Number::Float(v) => v.ceil().into(),
+			Number::Float(v) => Self::Float(v.ceil()),
 			Number::Decimal(v) => (v + BigDecimal::from_f32(0.5).unwrap()).round(0).into(),
 		}
 	}
@@ -277,7 +266,7 @@ impl Number {
 	pub fn floor(self) -> Self {
 		match self {
 			Number::Int(v) => v.into(),
-			Number::Float(v) => v.floor().into(),
+			Number::Float(v) => Self::Float(v.floor()),
 			Number::Decimal(v) => (v - BigDecimal::from_f32(0.5).unwrap()).round(0).into(),
 		}
 	}
@@ -285,15 +274,15 @@ impl Number {
 	pub fn round(self) -> Self {
 		match self {
 			Number::Int(v) => v.into(),
-			Number::Float(v) => v.round().into(),
+			Number::Float(v) => Self::Float(v.round()),
 			Number::Decimal(v) => v.round(0).into(),
 		}
 	}
 
 	pub fn sqrt(self) -> Self {
 		match self {
-			Number::Int(v) => (v as f64).sqrt().into(),
-			Number::Float(v) => v.sqrt().into(),
+			Number::Int(v) => Self::Float((v as f64).sqrt()),
+			Number::Float(v) => Self::Float(v.sqrt()),
 			Number::Decimal(v) => v.sqrt().unwrap_or_default().into(),
 		}
 	}
@@ -370,7 +359,10 @@ impl ops::Add for Number {
 	fn add(self, other: Self) -> Self {
 		match (self, other) {
 			(Number::Int(v), Number::Int(w)) => Number::Int(v + w),
-			(Number::Float(v), Number::Float(w)) => Number::Float(v + w),
+			(Number::Float(v), Number::Float(w)) => {
+				debug_assert!(!v.is_nan() && !w.is_nan());
+				Number::Float(v + w)
+			},
 			(Number::Decimal(v), Number::Decimal(w)) => Number::Decimal(v + w),
 			(Number::Int(v), Number::Float(w)) => Number::Float(v as f64 + w),
 			(Number::Float(v), Number::Int(w)) => Number::Float(v + w as f64),

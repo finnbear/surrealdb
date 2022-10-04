@@ -330,13 +330,17 @@ impl From<usize> for Value {
 
 impl From<f32> for Value {
 	fn from(v: f32) -> Self {
-		Value::Number(Number::from(v))
+		Self::from(v as f64)
 	}
 }
 
 impl From<f64> for Value {
 	fn from(v: f64) -> Self {
-		Value::Number(Number::from(v))
+		if v.is_nan() {
+			Value::None
+		} else {
+			Value::Number(Number::Float(v))
+		}
 	}
 }
 
@@ -1210,7 +1214,10 @@ impl ops::Add for Value {
 	type Output = Self;
 	fn add(self, other: Self) -> Self {
 		match (self, other) {
-			(Value::Number(v), Value::Number(w)) => Value::Number(v + w),
+			(Value::Number(v), Value::Number(w)) => {
+				let sum = v + w;
+				Value::Number()
+			},
 			(Value::Strand(v), Value::Strand(w)) => Value::Strand(v + w),
 			(Value::Datetime(v), Value::Duration(w)) => Value::Datetime(w + v),
 			(Value::Duration(v), Value::Datetime(w)) => Value::Datetime(v + w),
