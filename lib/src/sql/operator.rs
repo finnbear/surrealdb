@@ -16,6 +16,7 @@ pub enum Operator {
 	And, // &&
 	Tco, // ?: Ternary conditional operator
 	Nco, // ?? Null coalescing operator
+	Not, // ! Unary negation operator
 	//
 	Add, // +
 	Sub, // -
@@ -130,11 +131,31 @@ pub fn assigner(i: &str) -> IResult<&str, Operator> {
 	))(i)
 }
 
-pub fn operator(i: &str) -> IResult<&str, Operator> {
-	alt((symbols, phrases))(i)
+pub fn unary_operator(i: &str) -> IResult<&str, Operator> {
+	alt((unary_symbols, unary_phrases))(i)
 }
 
-pub fn symbols(i: &str) -> IResult<&str, Operator> {
+pub fn unary_symbols(i: &str) -> IResult<&str, Operator> {
+	let (i, _) = mightbespace(i)?;
+	let (i, v) = alt((
+		map(tag("!"), |_| Operator::Not),
+	))(i)?;
+	let (i, _) = mightbespace(i)?;
+	Ok((i, v))
+}
+
+pub fn unary_phrases(i: &str) -> IResult<&str, Operator> {
+	let (i, _) = shouldbespace(i)?;
+	let (i, v) = alt((map(tag_no_case("NOT"), |_| Operator::Not),))(i)?;
+	let (i, _) = shouldbespace(i)?;
+	Ok((i, v))
+}
+
+pub fn binary_operator(i: &str) -> IResult<&str, Operator> {
+	alt((binary_symbols, binary_phrases))(i)
+}
+
+pub fn binary_symbols(i: &str) -> IResult<&str, Operator> {
 	let (i, _) = mightbespace(i)?;
 	let (i, v) = alt((
 		alt((
@@ -189,7 +210,7 @@ pub fn symbols(i: &str) -> IResult<&str, Operator> {
 	Ok((i, v))
 }
 
-pub fn phrases(i: &str) -> IResult<&str, Operator> {
+pub fn binary_phrases(i: &str) -> IResult<&str, Operator> {
 	let (i, _) = shouldbespace(i)?;
 	let (i, v) = alt((
 		alt((

@@ -4,22 +4,30 @@ use crate::dbs::Transaction;
 use crate::err::Error;
 use crate::fnc;
 use crate::sql::error::IResult;
-use crate::sql::operator::{operator, Operator};
+use crate::sql::operator::{binary_operator, Operator};
 use crate::sql::value::{single, value, Value};
 use serde::{Deserialize, Serialize};
 use std::fmt;
 use std::str;
 
+use super::operator::unary_operator;
+
 #[derive(Clone, Debug, Eq, PartialEq, PartialOrd, Serialize, Deserialize, Hash)]
-pub struct Expression {
-	pub l: Value,
-	pub o: Operator,
-	pub r: Value,
+pub enum Expression {
+	Unary{
+		o: Operator,
+		v: Value,
+	}
+	Binary{
+		l: Value,
+		o: Operator,
+		r: Value,
+	}
 }
 
 impl Default for Expression {
-	fn default() -> Expression {
-		Expression {
+	fn default() -> Self {
+		Self::Binary {
 			l: Value::Null,
 			o: Operator::default(),
 			r: Value::Null,
@@ -28,9 +36,9 @@ impl Default for Expression {
 }
 
 impl Expression {
-	/// Create a new expression
+	/// Create a new binary expression
 	fn new(l: Value, o: Operator, r: Value) -> Self {
-		Self {
+		Self::Binary {
 			l,
 			o,
 			r,
@@ -38,6 +46,11 @@ impl Expression {
 	}
 	/// Augment an existing expression
 	fn augment(mut self, l: Value, o: Operator) -> Self {
+		match self {
+			Self::Unary { .. } => {
+				Self::new(Value::from(self), o, l);
+			}
+		}
 		if o.precedence() >= self.o.precedence() {
 			match self.l {
 				Value::Expression(x) => {
@@ -136,8 +149,21 @@ impl fmt::Display for Expression {
 }
 
 pub fn expression(i: &str) -> IResult<&str, Expression> {
+	alt((
+		unary_expression,
+		binary_expression,
+	))
+}
+
+pub fn unary_expression(i: &str) -> IResult<&str, Expression> {
+	let (i, o) = unary_operator(i)?;
+	let (i, v) = single(i)?;
+	Ok((i, Expression::Unary{o, v}))
+}
+
+pub fn binary_expression(i: &str) -> IResult<&str, Expression> {
 	let (i, l) = single(i)?;
-	let (i, o) = operator(i)?;
+	let (i, o) = binary_operator(i)?;
 	let (i, r) = value(i)?;
 	let v = match r {
 		Value::Expression(r) => r.augment(l, o),
