@@ -13,6 +13,7 @@ use surrealdb::Response;
 #[tokio::main]
 pub async fn init(matches: &clap::ArgMatches) -> Result<(), Error> {
 	// Initialize opentelemetry and logging
+	#[cfg(feature = "opentelemetry")]
 	crate::o11y::builder().with_log_level("warn").init();
 	// Parse all other cli arguments
 	let username = matches.value_of("user").unwrap();

@@ -14,6 +14,7 @@ storage-tikv = ["surrealdb/kv-tikv"]
 storage-fdb = ["surrealdb/kv-fdb-6_3"]
 scripting = ["surrealdb/scripting"]
 http = ["surrealdb/http"]
+opentelemetry = ["dep:opentelemetry", "opentelemetry-otlp", "tracing-opentelemetry"]
 
 [workspace]
 members = ["lib", "lib/examples/actix", "lib/examples/axum"]
@@ -39,8 +40,8 @@ hyper = "0.14.26"
 jsonwebtoken = "8.3.0"
 log = "0.4.17"
 once_cell = "1.17.1"
-opentelemetry = { version = "0.18", features = ["rt-tokio"] }
-opentelemetry-otlp = "0.11.0"
+opentelemetry = { version = "0.18", features = ["rt-tokio"], optional = true }
+opentelemetry-otlp = { version = "0.11.0", optional = true }
 rand = "0.8.5"
 reqwest = { version = "0.11.16", features = ["blocking"] }
 rustyline = "11.0.0"
@@ -53,7 +54,7 @@ thiserror = "1.0.40"
 tokio = { version = "1.27.0", features = ["macros", "signal"] }
 tracing = "0.1"
 tracing-futures = "0.2.5"
-tracing-opentelemetry = "0.18.0"
+tracing-opentelemetry = { version = "0.18.0", optional = true }
 tracing-subscriber = { version = "0.3.16", features = ["env-filter"] }
 urlencoding = "2.1.2"
 warp = { version = "0.3.4", features = ["compression", "tls", "websocket"] }

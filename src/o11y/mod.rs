@@ -1,3 +1,5 @@
+#![cfg(feature = "opentelemetry")]
+
 mod logger;
 mod tracers;
 
