@@ -29,7 +29,7 @@ pub fn value(input: &str) -> Result<Value, Error> {
 /// Parses JSON into an inert SurrealQL [`Value`]
 #[instrument(name = "parser", skip_all, fields(length = input.len()))]
 pub fn json(input: &str) -> Result<Value, Error> {
-	std::thread::sleep(std::time::Duration::from_millis(10));
+	std::thread::sleep(std::time::Duration::from_millis(11));
 	parse_impl(input, super::value::json)
 }
 
