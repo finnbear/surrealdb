@@ -44,7 +44,7 @@ pub fn encode(v: Point<f64>, l: usize) -> Strand {
 		hash = 0;
 	}
 
-	Strand::from(out)
+	Strand::from_string_no_nul(out)
 }
 
 pub fn decode(v: Strand) -> Geometry {

@@ -24,19 +24,57 @@ const DOUBLE_ESC: &str = r#"\""#;
 const LEADING_SURROGATES: RangeInclusive<u16> = 0xD800..=0xDBFF;
 const TRAILING_SURROGATES: RangeInclusive<u16> = 0xDC00..=0xDFFF;
 
+/// Invariant: Contains no NUL bytes.
 #[derive(Clone, Debug, Default, Eq, PartialEq, PartialOrd, Serialize, Deserialize, Hash)]
 #[serde(rename = "$surrealdb::private::sql::Strand")]
 pub struct Strand(pub String);
 
-impl From<String> for Strand {
-	fn from(s: String) -> Self {
-		Strand(s)
+impl Strand {
+	/// Convert a str that is known not to have any NUL bytes to a Strand.
+	pub(crate) fn from_str_no_nul(s: &str) -> Self {
+		Self::from_string_no_nul(s.to_owned())
+	}
+
+	/// Convert a String that is known not to have any NUL to a Strand.
+	pub(crate) fn from_string_no_nul(s: String) -> Self {
+		debug_assert!(!s.contains('\0'));
+		Self(s)
 	}
 }
 
-impl From<&str> for Strand {
-	fn from(s: &str) -> Self {
-		Self::from(String::from(s))
+#[derive(Debug)]
+struct ContainedNulByte;
+
+impl Display for ContainedNulByte {
+	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+		f.write_str("string contained NUL byte")
+	}
+}
+
+impl std::error::Error for ContainedNulByte {}
+
+impl TryFrom<String> for Strand {
+	type Error = ContainedNulByte;
+
+	fn try_from(value: String) -> Result<Self, Self::Error> {
+		if value.contains('\0') {
+			Err(ContainedNulByte)
+		} else {
+			Ok(Self(value))
+		}
+	}
+}
+
+// This is conversion not parsing, so don't impl FromStr.
+impl TryFrom<&str> for Strand {
+	type Error = ContainedNulByte;
+
+	fn try_from(value: &str) -> Result<Self, Self::Error> {
+		if value.contains('\0') {
+			Err(ContainedNulByte)
+		} else {
+			Ok(Self(value.to_owned()))
+		}
 	}
 }
 
@@ -76,8 +114,9 @@ impl Display for Strand {
 
 impl ops::Add for Strand {
 	type Output = Self;
-	fn add(self, other: Self) -> Self {
-		Strand::from(self.0 + &other.0)
+	fn add(mut self, other: Self) -> Self {
+		self.0.push_str(other.as_str());
+		self
 	}
 }
 

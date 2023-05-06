@@ -51,13 +51,13 @@ impl From<Option<Self>> for Object {
 impl From<Operation> for Object {
 	fn from(v: Operation) -> Self {
 		Self(map! {
-			String::from("op") => match v.op {
-				Op::None => Value::from("none"),
-				Op::Add => Value::from("add"),
-				Op::Remove => Value::from("remove"),
-				Op::Replace => Value::from("replace"),
-				Op::Change => Value::from("change"),
-			},
+			String::from("op") => Value::from(Strand::from_string_no_nul(match v.op {
+				Op::None => "none",
+				Op::Add => "add",
+				Op::Remove => "remove",
+				Op::Replace => "replace",
+				Op::Change => "change",
+			})),
 			String::from("path") => v.path.to_path().into(),
 			String::from("value") => v.value,
 		})

@@ -400,15 +400,19 @@ impl From<BigDecimal> for Value {
 	}
 }
 
-impl From<String> for Value {
-	fn from(v: String) -> Self {
-		Value::Strand(Strand::from(v))
+impl TryFrom<String> for Value {
+	type Error = <Strand as TryFrom<String>>::Error;
+
+	fn try_from(v: String) -> Result<Self, Self::Error> {
+		Strand::try_from(v).map(Self::Strand)
 	}
 }
 
-impl From<&str> for Value {
-	fn from(v: &str) -> Self {
-		Value::Strand(Strand::from(v))
+impl TryFrom<&str> for Value {
+	type Error = <Strand as TryFrom<String>>::Error;
+
+	fn try_from(v: &str) -> Result<Self, Self::Error> {
+		Strand::try_from(v).map(Self::Strand)
 	}
 }
 
