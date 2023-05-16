@@ -6,6 +6,8 @@ use crate::sql::number::Number;
 use crate::sql::part::Part;
 use crate::sql::value::Value;
 
+use super::TryAdd;
+
 impl Value {
 	/// Asynchronous method for incrementing a field in a `Value`
 	pub(crate) async fn increment(
@@ -18,7 +20,7 @@ impl Value {
 	) -> Result<(), Error> {
 		match self.get(ctx, opt, txn, None, path).await? {
 			Value::Number(v) => match val {
-				Value::Number(x) => self.set(ctx, opt, txn, path, Value::from(v + x)).await,
+				Value::Number(x) => self.set(ctx, opt, txn, path, Value::from(v.try_add(x)?)).await,
 				_ => Ok(()),
 			},
 			Value::Array(v) => match val {
@@ -27,7 +29,7 @@ impl Value {
 			},
 			Value::None => match val {
 				Value::Number(x) => {
-					self.set(ctx, opt, txn, path, Value::from(Number::from(0) + x)).await
+					self.set(ctx, opt, txn, path, Value::from(Number::from(0).try_add(x)?)).await
 				}
 				Value::Array(x) => self.set(ctx, opt, txn, path, Value::from(x)).await,
 				x => self.set(ctx, opt, txn, path, Value::from(vec![x])).await,

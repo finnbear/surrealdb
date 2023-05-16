@@ -9,6 +9,6 @@ pub trait Trimean {
 
 impl Trimean for Sorted<&Vec<Number>> {
 	fn trimean(self) -> Number {
-		(self.midhinge() + self.median()) / Number::from(2)
+		self.midhinge().try_add(self.median()).and_then(|n| n.try_div(Number::from(2))).unwrap_or(Number::NAN)
 	}
 }

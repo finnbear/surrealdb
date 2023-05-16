@@ -2000,28 +2000,14 @@ pub(crate) trait TryAdd<Rhs = Self> {
 impl TryAdd for Value {
 	type Output = Self;
 	fn try_add(self, other: Self) -> Result<Self, Error> {
-		match (self, other) {
-			(Value::Number(v), Value::Number(w)) => match (v, w) {
-				(Number::Int(v), Number::Int(w)) if v.checked_add(w).is_none() => {
-					Err(Error::TryAdd(v.to_string(), w.to_string()))
-				}
-				(Number::Decimal(v), Number::Decimal(w)) if v.checked_add(w).is_none() => {
-					Err(Error::TryAdd(v.to_string(), w.to_string()))
-				}
-				(Number::Decimal(v), w) if v.checked_add(w.to_decimal()).is_none() => {
-					Err(Error::TryAdd(v.to_string(), w.to_string()))
-				}
-				(v, Number::Decimal(w)) if v.to_decimal().checked_add(w).is_none() => {
-					Err(Error::TryAdd(v.to_string(), w.to_string()))
-				}
-				(v, w) => Ok(Value::Number(v + w)),
-			},
-			(Value::Strand(v), Value::Strand(w)) => Ok(Value::Strand(v + w)),
-			(Value::Datetime(v), Value::Duration(w)) => Ok(Value::Datetime(w + v)),
-			(Value::Duration(v), Value::Datetime(w)) => Ok(Value::Datetime(v + w)),
-			(Value::Duration(v), Value::Duration(w)) => Ok(Value::Duration(v + w)),
-			(v, w) => Err(Error::TryAdd(v.to_raw_string(), w.to_raw_string())),
-		}
+		Ok(match (self, other) {
+			(Value::Number(v), Value::Number(w)) => v.try_add(w)?.into(),
+			(Value::Strand(v), Value::Strand(w)) => Value::Strand(v + w),
+			(Value::Datetime(v), Value::Duration(w)) => Value::Datetime(w + v),
+			(Value::Duration(v), Value::Datetime(w)) => Value::Datetime(v + w),
+			(Value::Duration(v), Value::Duration(w)) => Value::Duration(v + w),
+			(v, w) => return Err(Error::TryAdd(v.to_raw_string(), w.to_raw_string())),
+		})
 	}
 }
 
@@ -2035,28 +2021,14 @@ pub(crate) trait TrySub<Rhs = Self> {
 impl TrySub for Value {
 	type Output = Self;
 	fn try_sub(self, other: Self) -> Result<Self, Error> {
-		match (self, other) {
-			(Value::Number(v), Value::Number(w)) => match (v, w) {
-				(Number::Int(v), Number::Int(w)) if v.checked_sub(w).is_none() => {
-					Err(Error::TrySub(v.to_string(), w.to_string()))
-				}
-				(Number::Decimal(v), Number::Decimal(w)) if v.checked_sub(w).is_none() => {
-					Err(Error::TrySub(v.to_string(), w.to_string()))
-				}
-				(Number::Decimal(v), w) if v.checked_sub(w.to_decimal()).is_none() => {
-					Err(Error::TrySub(v.to_string(), w.to_string()))
-				}
-				(v, Number::Decimal(w)) if v.to_decimal().checked_sub(w).is_none() => {
-					Err(Error::TrySub(v.to_string(), w.to_string()))
-				}
-				(v, w) => Ok(Value::Number(v - w)),
-			},
-			(Value::Datetime(v), Value::Datetime(w)) => Ok(Value::Duration(v - w)),
-			(Value::Datetime(v), Value::Duration(w)) => Ok(Value::Datetime(w - v)),
-			(Value::Duration(v), Value::Datetime(w)) => Ok(Value::Datetime(v - w)),
-			(Value::Duration(v), Value::Duration(w)) => Ok(Value::Duration(v - w)),
-			(v, w) => Err(Error::TrySub(v.to_raw_string(), w.to_raw_string())),
-		}
+		Ok(match (self, other) {
+			(Value::Number(v), Value::Number(w)) => v.try_sub(w)?.into(),
+			(Value::Datetime(v), Value::Datetime(w)) => Value::Duration(v - w),
+			(Value::Datetime(v), Value::Duration(w)) => Value::Datetime(w - v),
+			(Value::Duration(v), Value::Datetime(w)) => Value::Datetime(v - w),
+			(Value::Duration(v), Value::Duration(w)) => Value::Duration(v - w),
+			(v, w) => return Err(Error::TrySub(v.to_raw_string(), w.to_raw_string())),
+		})
 	}
 }
 
@@ -2071,21 +2043,7 @@ impl TryMul for Value {
 	type Output = Self;
 	fn try_mul(self, other: Self) -> Result<Self, Error> {
 		match (self, other) {
-			(Value::Number(v), Value::Number(w)) => match (v, w) {
-				(Number::Int(v), Number::Int(w)) if v.checked_mul(w).is_none() => {
-					Err(Error::TryMul(v.to_string(), w.to_string()))
-				}
-				(Number::Decimal(v), Number::Decimal(w)) if v.checked_mul(w).is_none() => {
-					Err(Error::TryMul(v.to_string(), w.to_string()))
-				}
-				(Number::Decimal(v), w) if v.checked_mul(w.to_decimal()).is_none() => {
-					Err(Error::TryMul(v.to_string(), w.to_string()))
-				}
-				(v, Number::Decimal(w)) if v.to_decimal().checked_mul(w).is_none() => {
-					Err(Error::TryMul(v.to_string(), w.to_string()))
-				}
-				(v, w) => Ok(Value::Number(v * w)),
-			},
+			(Value::Number(v), Value::Number(w)) => Ok(v.try_mul(w)?.into()),
 			(v, w) => Err(Error::TryMul(v.to_raw_string(), w.to_raw_string())),
 		}
 	}
@@ -2102,14 +2060,7 @@ impl TryDiv for Value {
 	type Output = Self;
 	fn try_div(self, other: Self) -> Result<Self, Error> {
 		match (self, other) {
-			(Value::Number(v), Value::Number(w)) => match (v, w) {
-				(_, w) if w == Number::Int(0) => Ok(Value::None),
-				(Number::Decimal(v), Number::Decimal(w)) if v.checked_div(w).is_none() => {
-					// Divided a large number by a small number, got an overflowing number
-					Err(Error::TryDiv(v.to_string(), w.to_string()))
-				}
-				(v, w) => Ok(Value::Number(v / w)),
-			},
+			(Value::Number(v), Value::Number(w)) => Ok(v.try_div(w)?.into()),
 			(v, w) => Err(Error::TryDiv(v.to_raw_string(), w.to_raw_string())),
 		}
 	}
@@ -2126,17 +2077,7 @@ impl TryPow for Value {
 	type Output = Self;
 	fn try_pow(self, other: Self) -> Result<Self, Error> {
 		match (self, other) {
-			(Value::Number(v), Value::Number(w)) => match (v, w) {
-				(Number::Int(v), Number::Int(w))
-					if w.try_into().ok().and_then(|w| v.checked_pow(w)).is_none() =>
-				{
-					Err(Error::TryPow(v.to_string(), w.to_string()))
-				}
-				(Number::Decimal(v), Number::Int(w)) if v.checked_powi(w).is_none() => {
-					Err(Error::TryPow(v.to_string(), w.to_string()))
-				}
-				(v, w) => Ok(Value::Number(v.pow(w))),
-			},
+			(Value::Number(v), Value::Number(w)) => Ok(v.try_pow(w)?.into()),
 			(v, w) => Err(Error::TryPow(v.to_raw_string(), w.to_raw_string())),
 		}
 	}

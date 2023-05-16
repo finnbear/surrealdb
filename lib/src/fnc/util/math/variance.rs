@@ -1,5 +1,8 @@
 use super::mean::Mean;
-use crate::sql::number::Number;
+use crate::err::Error;
+use crate::sql::number::TrySum;
+use crate::sql::value::{TryMul, TryDiv};
+use crate::sql::{number::Number, value::TrySub};
 
 pub trait Variance {
 	/// Population Variance of Data
@@ -15,7 +18,12 @@ impl Variance for Vec<Number> {
 			len => {
 				let mean = self.mean();
 				let len = Number::from(len - sample as usize);
-				let out = self.iter().map(|x| (x - &mean) * (x - &mean)).sum::<Number>() / len;
+				let out = Number::try_sum(
+					self.iter().map(|x| x.try_sub(&mean)?.try_mul(x.try_sub(&mean)?)?),
+				)
+				.unwrap_or(Number::NAN)
+				.try_div(len)
+				.unwrap_or(Number::NAN);
 				out
 			}
 		}

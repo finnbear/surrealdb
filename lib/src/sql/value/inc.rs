@@ -2,13 +2,15 @@ use crate::sql::number::Number;
 use crate::sql::part::Part;
 use crate::sql::value::Value;
 
+use super::TryAdd;
+
 impl Value {
 	/// Synchronous method for incrementing a field in a `Value`
-	pub(crate) fn inc(&mut self, path: &[Part], val: Value) {
+	pub(crate) fn inc(&mut self, path: &[Part], val: Value) -> Result<(), Error> {
 		match self.pick(path) {
 			Value::Number(v) => {
 				if let Value::Number(x) = val {
-					self.put(path, Value::from(v + x))
+					self.put(path, Value::from(v.try_add(x)))
 				}
 			}
 			Value::Array(v) => match val {
@@ -16,7 +18,7 @@ impl Value {
 				x => self.put(path, Value::from(v + x)),
 			},
 			Value::None => match val {
-				Value::Number(x) => self.put(path, Value::from(Number::from(0) + x)),
+				Value::Number(x) => self.put(path, Value::from(Number::from(0).try_add(x)?)),
 				Value::Array(x) => self.put(path, Value::from(x)),
 				x => self.put(path, Value::from(vec![x])),
 			},

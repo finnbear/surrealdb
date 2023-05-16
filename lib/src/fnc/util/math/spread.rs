@@ -1,4 +1,4 @@
-use crate::sql::number::Number;
+use crate::sql::{number::Number, value::TrySub};
 
 pub trait Spread {
 	/// Gets the extent to which a distribution is stretched
@@ -18,7 +18,7 @@ impl Spread for Vec<Number> {
 		});
 		// Return the maximum - minimum or NaN
 		match min_max {
-			(Some(min), Some(max)) => max - min,
+			(Some(min), Some(max)) => max.try_sub(min).unwrap_or(Number::NAN),
 			_ => Number::NAN,
 		}
 	}

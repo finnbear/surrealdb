@@ -14,8 +14,9 @@ use std::fmt::{self, Display, Formatter};
 use std::hash;
 use std::iter::Product;
 use std::iter::Sum;
-use std::ops;
 use std::str::FromStr;
+
+use super::value::{TryAdd, TryDiv, TryMul, TryPow, TrySub};
 
 pub(crate) const TOKEN: &str = "$surrealdb::private::sql::Number";
 
@@ -363,16 +364,6 @@ impl Number {
 			Number::Decimal(v) => v.sqrt().unwrap_or_default().into(),
 		}
 	}
-
-	pub fn pow(self, power: Number) -> Number {
-		match (self, power) {
-			(Number::Int(v), Number::Int(p)) => Number::Int(v.pow(p as u32)),
-			(Number::Decimal(v), Number::Int(p)) => v.powi(p).into(),
-			// TODO: (Number::Decimal(v), Number::Float(p)) => todo!(),
-			// TODO: (Number::Decimal(v), Number::Decimal(p)) => todo!(),
-			(v, p) => v.as_float().powf(p.as_float()).into(),
-		}
-	}
 }
 
 impl Eq for Number {}
@@ -439,151 +430,181 @@ impl PartialOrd for Number {
 	}
 }
 
-impl ops::Add for Number {
+impl TryAdd for Number {
 	type Output = Self;
-	fn add(self, other: Self) -> Self {
-		match (self, other) {
-			(Number::Int(v), Number::Int(w)) => Number::Int(v + w),
-			(Number::Float(v), Number::Float(w)) => Number::Float(v + w),
-			(Number::Decimal(v), Number::Decimal(w)) => Number::Decimal(v + w),
-			(Number::Int(v), Number::Float(w)) => Number::Float(v as f64 + w),
-			(Number::Float(v), Number::Int(w)) => Number::Float(v + w as f64),
-			(v, w) => Number::from(v.as_decimal() + w.as_decimal()),
-		}
+	fn try_add(self, other: Self) -> Result<Self, Error> {
+		Ok(match (self, other) {
+			(Self::Int(v), Self::Int(w)) => Self::Int(
+				v.checked_add(w).ok_or_else(|| Error::TryAdd(v.to_string(), w.to_string()))?,
+			),
+			(Self::Float(v), Self::Float(w)) => Self::Float(v + w),
+			(Self::Decimal(v), Self::Decimal(w)) => Self::Decimal(
+				v.checked_add(w).ok_or_else(|| Error::TryAdd(v.to_string(), w.to_string()))?,
+			),
+			(Self::Int(v), Self::Float(w)) => Self::Float(v as f64 + w),
+			(Self::Float(v), Self::Int(w)) => Self::Float(v + w as f64),
+			(v, w) => Number::from(
+				v.as_decimal()
+					.checked_add(w.as_decimal())
+					.ok_or_else(|| Error::TryAdd(v.to_string(), w.to_string()))?,
+			),
+		})
 	}
 }
 
-impl<'a, 'b> ops::Add<&'b Number> for &'a Number {
+impl<'a> TryAdd for &'a Number {
 	type Output = Number;
-	fn add(self, other: &'b Number) -> Number {
-		match (self, other) {
-			(Number::Int(v), Number::Int(w)) => Number::Int(v + w),
-			(Number::Float(v), Number::Float(w)) => Number::Float(v + w),
-			(Number::Decimal(v), Number::Decimal(w)) => Number::Decimal(v + w),
-			(Number::Int(v), Number::Float(w)) => Number::Float(*v as f64 + w),
-			(Number::Float(v), Number::Int(w)) => Number::Float(v + *w as f64),
-			(v, w) => Number::from(v.to_decimal() + w.to_decimal()),
-		}
+	fn try_add(self, other: Self) -> Result<Number, Error> {
+		self.clone().try_add(other.clone())
 	}
 }
 
-impl ops::Sub for Number {
+impl TrySub for Number {
 	type Output = Self;
-	fn sub(self, other: Self) -> Self {
-		match (self, other) {
-			(Number::Int(v), Number::Int(w)) => Number::Int(v - w),
-			(Number::Float(v), Number::Float(w)) => Number::Float(v - w),
-			(Number::Decimal(v), Number::Decimal(w)) => Number::Decimal(v - w),
-			(Number::Int(v), Number::Float(w)) => Number::Float(v as f64 - w),
-			(Number::Float(v), Number::Int(w)) => Number::Float(v - w as f64),
-			(v, w) => Number::from(v.as_decimal() - w.as_decimal()),
-		}
+	fn try_sub(self, other: Self) -> Result<Self, Error> {
+		Ok(match (self, other) {
+			(Self::Int(v), Self::Int(w)) => Self::Int(
+				v.checked_sub(w).ok_or_else(|| Error::TrySub(v.to_string(), w.to_string()))?,
+			),
+			(Self::Float(v), Self::Float(w)) => Self::Float(v - w),
+			(Self::Decimal(v), Self::Decimal(w)) => Self::Decimal(
+				v.checked_sub(w).ok_or_else(|| Error::TrySub(v.to_string(), w.to_string()))?,
+			),
+			(Self::Int(v), Self::Float(w)) => Self::Float(v as f64 - w),
+			(Self::Float(v), Self::Int(w)) => Self::Float(v - w as f64),
+			(v, w) => Self::Decimal(
+				v.as_decimal()
+					.checked_sub(w.as_decimal())
+					.ok_or_else(|| Error::TrySub(v.to_string(), w.to_string()))?,
+			),
+		})
 	}
 }
 
-impl<'a, 'b> ops::Sub<&'b Number> for &'a Number {
+impl<'a> TrySub for &'a Number {
 	type Output = Number;
-	fn sub(self, other: &'b Number) -> Number {
-		match (self, other) {
-			(Number::Int(v), Number::Int(w)) => Number::Int(v - w),
-			(Number::Float(v), Number::Float(w)) => Number::Float(v - w),
-			(Number::Decimal(v), Number::Decimal(w)) => Number::Decimal(v - w),
-			(Number::Int(v), Number::Float(w)) => Number::Float(*v as f64 - w),
-			(Number::Float(v), Number::Int(w)) => Number::Float(v - *w as f64),
-			(v, w) => Number::from(v.to_decimal() - w.to_decimal()),
-		}
+	fn try_sub(self, other: Self) -> Result<Number, Error> {
+		self.clone().try_sub(other.clone())
 	}
 }
 
-impl ops::Mul for Number {
+impl TryMul for Number {
 	type Output = Self;
-	fn mul(self, other: Self) -> Self {
-		match (self, other) {
-			(Number::Int(v), Number::Int(w)) => Number::Int(v * w),
-			(Number::Float(v), Number::Float(w)) => Number::Float(v * w),
-			(Number::Decimal(v), Number::Decimal(w)) => Number::Decimal(v * w),
-			(Number::Int(v), Number::Float(w)) => Number::Float(v as f64 * w),
-			(Number::Float(v), Number::Int(w)) => Number::Float(v * w as f64),
-			(v, w) => Number::from(v.as_decimal() * w.as_decimal()),
-		}
+	fn try_mul(self, other: Self) -> Result<Self, Error> {
+		Ok(match (self, other) {
+			(Self::Int(v), Self::Int(w)) => Self::Int(
+				v.checked_mul(w).ok_or_else(|| Error::TryMul(v.to_string(), w.to_string()))?,
+			),
+			(Self::Float(v), Self::Float(w)) => Self::Float(v * w),
+			(Self::Decimal(v), Self::Decimal(w)) => Self::Decimal(
+				v.checked_mul(w).ok_or_else(|| Error::TryMul(v.to_string(), w.to_string()))?,
+			),
+			(Self::Int(v), Self::Float(w)) => Self::Float(v as f64 * w),
+			(Self::Float(v), Self::Int(w)) => Self::Float(v * w as f64),
+			(v, w) => Self::Decimal(
+				v.as_decimal()
+					.checked_mul(w.as_decimal())
+					.ok_or_else(|| Error::TryMul(v.to_string(), w.to_string()))?,
+			),
+		})
 	}
 }
 
-impl<'a, 'b> ops::Mul<&'b Number> for &'a Number {
+impl<'a> TryMul for &'a Number {
 	type Output = Number;
-	fn mul(self, other: &'b Number) -> Number {
-		match (self, other) {
-			(Number::Int(v), Number::Int(w)) => Number::Int(v * w),
-			(Number::Float(v), Number::Float(w)) => Number::Float(v * w),
-			(Number::Decimal(v), Number::Decimal(w)) => Number::Decimal(v * w),
-			(Number::Int(v), Number::Float(w)) => Number::Float(*v as f64 * w),
-			(Number::Float(v), Number::Int(w)) => Number::Float(v * *w as f64),
-			(v, w) => Number::from(v.to_decimal() * w.to_decimal()),
-		}
+	fn try_mul(self, other: Self) -> Result<Number, Error> {
+		self.clone().try_mul(other.clone())
 	}
 }
 
-impl ops::Div for Number {
+impl TryDiv for Number {
 	type Output = Self;
-	fn div(self, other: Self) -> Self {
-		match (self, other) {
-			(Number::Float(v), Number::Float(w)) => Number::Float(v / w),
-			(Number::Decimal(v), Number::Decimal(w)) => Number::Decimal(v / w),
-			(Number::Int(v), Number::Float(w)) => Number::Float(v as f64 / w),
-			(Number::Float(v), Number::Int(w)) => Number::Float(v / w as f64),
-			(v, w) => Number::from(v.as_decimal() / w.as_decimal()),
-		}
+	fn try_div(self, other: Self) -> Result<Self, Error> {
+		Ok(match (self, other) {
+			(Self::Int(v), Self::Int(w)) => Self::Int(
+				v.checked_div(w).ok_or_else(|| Error::TryDiv(v.to_string(), w.to_string()))?,
+			),
+			(Self::Float(v), Self::Float(w)) => Self::Float(v / w),
+			(Self::Decimal(v), Self::Decimal(w)) => Self::Decimal(
+				v.checked_div(w).ok_or_else(|| Error::TryDiv(v.to_string(), w.to_string()))?,
+			),
+			(Self::Int(v), Number::Float(w)) => Self::Float(v as f64 / w),
+			(Self::Float(v), Self::Int(w)) => Self::Float(v / w as f64),
+			(v, w) => Self::from(
+				v.as_decimal()
+					.checked_div(w.as_decimal())
+					.ok_or_else(|| Error::TryDiv(v.to_string(), w.to_string()))?,
+			),
+		})
 	}
 }
 
-impl<'a, 'b> ops::Div<&'b Number> for &'a Number {
+impl<'a> TryDiv for &'a Number {
 	type Output = Number;
-	fn div(self, other: &'b Number) -> Number {
-		match (self, other) {
-			(Number::Float(v), Number::Float(w)) => Number::Float(v / w),
-			(Number::Decimal(v), Number::Decimal(w)) => Number::Decimal(v / w),
-			(Number::Int(v), Number::Float(w)) => Number::Float(*v as f64 / w),
-			(Number::Float(v), Number::Int(w)) => Number::Float(v / *w as f64),
-			(v, w) => Number::from(v.to_decimal() / w.to_decimal()),
-		}
+	fn try_div(self, other: Self) -> Result<Number, Error> {
+		self.clone().try_div(other.clone())
+	}
+}
+
+impl TryPow for Number {
+	type Output = Self;
+	fn try_pow(self, power: Self) -> Result<Self, Error> {
+		Ok(match (self, power) {
+			(Self::Int(v), Self::Int(p)) => Self::Int(
+				p.try_into()
+					.ok()
+					.and_then(|p| v.checked_pow(p))
+					.ok_or_else(|| Error::TryPow(v.to_string(), p.to_string()))?,
+			),
+			(Self::Decimal(v), Self::Decimal(p)) => Self::Decimal(
+				v.checked_powd(p).ok_or_else(|| Error::TryPow(v.to_string(), p.to_string()))?,
+			),
+
+			(Self::Decimal(v), Self::Int(p)) => Self::Decimal(
+				v.checked_powi(p).ok_or_else(|| Error::TryPow(v.to_string(), p.to_string()))?,
+			),
+			(Self::Decimal(v), Self::Float(p)) => Self::Decimal(
+				v.checked_powf(p).ok_or_else(|| Error::TryPow(v.to_string(), p.to_string()))?,
+			),
+			(v, p) => Self::Float(v.as_float().powf(p.as_float())),
+		})
 	}
 }
 
 // ------------------------------
 
-impl Sum<Self> for Number {
-	fn sum<I>(iter: I) -> Number
+pub trait TrySum<A = Self>: Sized {
+	fn try_sum<I: Iterator<Item = A>>(iter: I) -> Result<Self, Error>;
+}
+
+impl TrySum for Number {
+	fn try_sum<I>(iter: I) -> Result<Self, Error>
 	where
 		I: Iterator<Item = Self>,
 	{
-		iter.fold(Number::Int(0), |a, b| a + b)
+		iter.fold(Ok(Number::Int(0)), |a, b| a?.try_add(b))
 	}
 }
 
-impl<'a> Sum<&'a Self> for Number {
-	fn sum<I>(iter: I) -> Number
+impl TrySum<Result<Self, Error>> for Number {
+	fn try_sum<I>(iter: I) -> Result<Self, Error>
 	where
-		I: Iterator<Item = &'a Self>,
+		I: Iterator<Item = Result<Self, Error>>,
 	{
-		iter.fold(Number::Int(0), |a, b| &a + b)
+		iter.fold(Ok(Number::Int(0)), |a, b| a?.try_add(b?))
 	}
 }
 
-impl Product<Self> for Number {
-	fn product<I>(iter: I) -> Number
+pub trait TryProduct<A = Self>: Sized {
+	fn try_product<I: Iterator<Item = Result<A, Error>>>(iter: I) -> Result<A, Error>;
+}
+
+impl TryProduct<Self> for Number {
+	fn try_product<I>(iter: I) -> Result<Self, Error>
 	where
 		I: Iterator<Item = Self>,
 	{
-		iter.fold(Number::Int(1), |a, b| a * b)
-	}
-}
-
-impl<'a> Product<&'a Self> for Number {
-	fn product<I>(iter: I) -> Number
-	where
-		I: Iterator<Item = &'a Self>,
-	{
-		iter.fold(Number::Int(1), |a, b| &a * b)
+		iter.fold(Ok(Number::Int(1)), |a, b| a?.try_mul(b))
 	}
 }
 

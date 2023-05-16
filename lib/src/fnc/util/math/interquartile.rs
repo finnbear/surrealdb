@@ -1,5 +1,8 @@
 use super::percentile::Percentile;
-use crate::sql::number::{Number, Sorted};
+use crate::sql::{
+	number::{Number, Sorted},
+	value::TrySub,
+};
 
 pub trait Interquartile {
 	/// Interquartile Range - the difference between the upper and lower quartiles
@@ -9,6 +12,8 @@ pub trait Interquartile {
 
 impl Interquartile for Sorted<&Vec<Number>> {
 	fn interquartile(self) -> Number {
-		self.percentile(Number::from(75)) - self.percentile(Number::from(25))
+		self.percentile(Number::from(75))
+			.try_sub(self.percentile(Number::from(25)))
+			.unwrap_or(Number::NAN)
 	}
 }
