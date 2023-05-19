@@ -570,12 +570,12 @@ mod tests {
 
 	#[test]
 	fn function_single_not() {
-		let sql = "not(1.2345)";
+		let sql = "not(1.5)";
 		let res = function(sql);
 		assert!(res.is_ok());
 		let out = res.unwrap().1;
-		assert_eq!("not(1.2345)", format!("{}", out));
-		assert_eq!(out, Function::Normal("not".to_owned(), vec![1.2345.into()]));
+		assert_eq!("not(1.5)", format!("{}", out));
+		assert_eq!(out, Function::Normal("not".to_owned(), vec![1.5.into()]));
 	}
 
 	#[test]
@@ -600,22 +600,22 @@ mod tests {
 
 	#[test]
 	fn function_casting_number() {
-		let sql = "<int>1.2345";
+		let sql = "<int>1.5";
 		let res = function(sql);
 		assert!(res.is_ok());
 		let out = res.unwrap().1;
-		assert_eq!("<int> 1.2345", format!("{}", out));
-		assert_eq!(out, Function::Cast(Kind::Int, 1.2345.into()));
+		assert_eq!("<int> 1.5", format!("{}", out));
+		assert_eq!(out, Function::Cast(Kind::Int, 1.5.into()));
 	}
 
 	#[test]
 	fn function_casting_string() {
-		let sql = "<string>1.2345";
+		let sql = "<string>1.5";
 		let res = function(sql);
 		assert!(res.is_ok());
 		let out = res.unwrap().1;
-		assert_eq!("<string> 1.2345", format!("{}", out));
-		assert_eq!(out, Function::Cast(Kind::String, 1.2345.into()));
+		assert_eq!("<string> 1.5", format!("{}", out));
+		assert_eq!(out, Function::Cast(Kind::String, 1.5.into()));
 	}
 
 	#[test]

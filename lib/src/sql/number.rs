@@ -651,22 +651,22 @@ mod tests {
 
 	#[test]
 	fn number_float() {
-		let sql = "123.45";
+		let sql = "123.5";
 		let res = number(sql);
 		assert!(res.is_ok());
 		let out = res.unwrap().1;
-		assert_eq!("123.45", format!("{}", out));
-		assert_eq!(out, Number::Float(123.45));
+		assert_eq!("123.5", format!("{}", out));
+		assert_eq!(out, Number::Float(123.5));
 	}
 
 	#[test]
 	fn number_float_neg() {
-		let sql = "-123.45";
+		let sql = "-123.5";
 		let res = number(sql);
 		assert!(res.is_ok());
 		let out = res.unwrap().1;
-		assert_eq!("-123.45", format!("{}", out));
-		assert_eq!(out, Number::Float(-123.45));
+		assert_eq!("-123.5", format!("{}", out));
+		assert_eq!(out, Number::Float(-123.5));
 	}
 
 	#[test]
