@@ -40,13 +40,13 @@ We would love it if you could star the repository (https://github.com/surrealdb/
 #[command(name = "SurrealDB command-line interface and server", bin_name = "surreal")]
 #[command(about = INFO, before_help = LOGO)]
 #[command(disable_version_flag = true, arg_required_else_help = true)]
-struct Cli {
+pub struct Cli {
 	#[command(subcommand)]
 	command: Commands,
 }
 
 #[derive(Debug, Subcommand)]
-enum Commands {
+pub enum Commands {
 	#[command(about = "Start the database server")]
 	Start(StartCommandArguments),
 	#[command(about = "Backup data to or from an existing database")]
@@ -66,8 +66,7 @@ enum Commands {
 	IsReady(IsReadyCommandArguments),
 }
 
-pub async fn init() -> ExitCode {
-	let args = Cli::parse();
+pub async fn init(args: Cli) -> ExitCode {
 	let output = match args.command {
 		Commands::Start(args) => start::init(args).await,
 		Commands::Backup(args) => backup::init(args).await,

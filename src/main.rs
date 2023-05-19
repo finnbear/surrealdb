@@ -26,12 +26,14 @@ mod net;
 mod o11y;
 mod rpc;
 
+use cli::Cli;
 use std::future::Future;
 use std::process::ExitCode;
+use clap::Parser;
 
 fn main() -> ExitCode {
 	// Initiate the command line
-	with_enough_stack(cli::init())
+	with_enough_stack(cli::init(Cli::parse()))
 }
 
 /// Rust's default thread stack size of 2MiB doesn't allow sufficient recursion depth.
@@ -48,4 +50,49 @@ fn with_enough_stack<T>(fut: impl Future<Output = T> + Send) -> T {
 		.build()
 		.unwrap()
 		.block_on(fut)
+}
+
+#[cfg(test)]
+mod test {
+	use std::sync::{Arc, Mutex};
+
+	fn run(args: &str) -> String {
+		#[derive(Clone)]
+		struct Mock(Arc<Mutex<Vec<u8>>>);
+		impl std::io::Write for Mock {
+			fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+				self.0.lock().unwrap().write(buf)
+			}
+
+			fn flush(&mut self) -> std::io::Result<()> {
+				// No-op.
+				Ok(())
+			}
+		}
+
+		let mock = Mock(Arc::new(Mutex::new(Vec::new())));
+
+		let collector = {
+			let mock = mock.clone();
+			tracing_subscriber::fmt().with_writer(move || mock.clone()).finish()
+		};
+
+		let _exit_code = tracing::subscriber::with_default(collector, || {
+			let args = std::iter::once("surreal").chain(args.split_ascii_whitespace());
+			use clap::Parser;
+			let args = crate::Cli::parse_from(args);
+			futures::executor::block_on(crate::cli::init(
+				args,
+			))
+			
+		});
+
+		let lock = mock.0.lock().unwrap();
+		String::from_utf8(lock.clone()).unwrap()
+	}
+
+	#[test]
+	fn version() {
+		assert_eq!(run("version"), crate::env::release())
+	}
 }
