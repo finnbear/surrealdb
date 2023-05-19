@@ -1,5 +1,5 @@
-use crate::cli::CF;
 use crate::dbs::DB;
+use crate::cli::Config;
 use crate::err::Error;
 use crate::net::input::bytes_to_utf8;
 use crate::net::output;
@@ -14,7 +14,7 @@ use warp::Filter;
 const MAX: u64 = 1024 * 1024; // 1 MiB
 
 #[allow(opaque_hidden_inferred_bound)]
-pub fn config() -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
+pub fn config(opt: &'static Config) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
 	// Set base path
 	let base = warp::path("sql").and(warp::path::end());
 	// Set opts method
@@ -27,17 +27,18 @@ pub fn config() -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejecti
 		.and(warp::body::bytes())
 		.and(warp::query())
 		.and(session::build())
-		.and_then(handler);
+		.and_then(move |o, b, p, s| handler(opt, o, b, p, s));
 	// Set sock method
 	let sock = base
 		.and(warp::ws())
 		.and(session::build())
-		.map(|ws: Ws, session: Session| ws.on_upgrade(move |ws| socket(ws, session)));
+		.map(|ws: Ws, session: Session| ws.on_upgrade(move |ws| socket(opt, ws, session)));
 	// Specify route
 	opts.or(post).or(sock)
 }
 
 async fn handler(
+	opt: &Config,
 	output: String,
 	sql: Bytes,
 	params: Params,
@@ -45,8 +46,6 @@ async fn handler(
 ) -> Result<impl warp::Reply, warp::Rejection> {
 	// Get a database reference
 	let db = DB.get().unwrap();
-	// Get local copy of options
-	let opt = CF.get().unwrap();
 	// Convert the received sql query
 	let sql = bytes_to_utf8(&sql)?;
 	// Execute the received sql query
@@ -67,7 +66,7 @@ async fn handler(
 	}
 }
 
-async fn socket(ws: WebSocket, session: Session) {
+async fn socket(opt: &Config, ws: WebSocket, session: Session) {
 	// Split the WebSocket connection
 	let (mut tx, mut rx) = ws.split();
 	// Wait to receive the next message
@@ -76,8 +75,6 @@ async fn socket(ws: WebSocket, session: Session) {
 			if let Ok(sql) = msg.to_str() {
 				// Get a database reference
 				let db = DB.get().unwrap();
-				// Get local copy of options
-				let opt = CF.get().unwrap();
 				// Execute the received sql query
 				let _ = match db.execute(sql, &session, None, opt.strict).await {
 					// Convert the response to JSON

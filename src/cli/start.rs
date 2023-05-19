@@ -20,15 +20,15 @@ async fn init_impl(matches: &clap::ArgMatches) -> Result<(), Error> {
 		println!("{LOGO}");
 	}
 	// Setup the cli options
-	config::init(matches);
+	let config = config::init(matches);
 	// Initiate environment
 	env::init().await?;
 	// Initiate master auth
-	iam::init().await?;
+	iam::init(&config).await?;
 	// Start the kvs server
-	dbs::init().await?;
+	dbs::init(&config).await?;
 	// Start the web server
-	net::init().await?;
+	net::init(&config).await?;
 	// All ok
 	Ok(())
 }

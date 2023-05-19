@@ -6,7 +6,7 @@ pub mod signup;
 pub mod token;
 pub mod verify;
 
-use crate::cli::CF;
+use crate::cli::Config;
 use crate::err::Error;
 
 pub const BASIC: &str = "Basic ";
@@ -14,9 +14,7 @@ pub const TOKEN: &str = "Bearer ";
 
 const LOG: &str = "surrealdb::iam";
 
-pub async fn init() -> Result<(), Error> {
-	// Get local copy of options
-	let opt = CF.get().unwrap();
+pub async fn init(opt: &Config) -> Result<(), Error> {
 	// Log authentication options
 	match opt.pass {
 		Some(_) => {

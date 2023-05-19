@@ -7,8 +7,7 @@ mod sql;
 mod start;
 mod version;
 
-pub use config::CF;
-
+pub use config::Config;
 use crate::cnf::LOGO;
 use clap::{Arg, Command};
 use std::net::SocketAddr;

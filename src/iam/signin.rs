@@ -1,4 +1,4 @@
-use crate::cli::CF;
+use crate::cli::Config;
 use crate::cnf::SERVER_NAME;
 use crate::dbs::DB;
 use crate::err::Error;
@@ -13,7 +13,7 @@ use surrealdb::dbs::Session;
 use surrealdb::sql::Object;
 use surrealdb::sql::Value;
 
-pub async fn signin(session: &mut Session, vars: Object) -> Result<Option<String>, Error> {
+pub async fn signin(opt: &Config, session: &mut Session, vars: Object) -> Result<Option<String>, Error> {
 	// Parse the specified variables
 	let ns = vars.get("NS").or_else(|| vars.get("ns"));
 	let db = vars.get("DB").or_else(|| vars.get("db"));
@@ -26,7 +26,7 @@ pub async fn signin(session: &mut Session, vars: Object) -> Result<Option<String
 			let db = db.to_raw_string();
 			let sc = sc.to_raw_string();
 			// Attempt to signin to specified scope
-			super::signin::sc(session, ns, db, sc, vars).await
+			super::signin::sc(opt, session, ns, db, sc, vars).await
 		}
 		(Some(ns), Some(db), None) => {
 			// Get the provided user and pass
@@ -79,7 +79,7 @@ pub async fn signin(session: &mut Session, vars: Object) -> Result<Option<String
 					let user = user.to_raw_string();
 					let pass = pass.to_raw_string();
 					// Attempt to signin to namespace
-					super::signin::su(session, user, pass).await
+					super::signin::su(opt, session, user, pass).await
 				}
 				// There is no username or password
 				_ => Err(Error::InvalidAuth),
@@ -90,6 +90,7 @@ pub async fn signin(session: &mut Session, vars: Object) -> Result<Option<String
 }
 
 pub async fn sc(
+	opt: &Config,
 	session: &mut Session,
 	ns: String,
 	db: String,
@@ -98,8 +99,6 @@ pub async fn sc(
 ) -> Result<Option<String>, Error> {
 	// Get a database reference
 	let kvs = DB.get().unwrap();
-	// Get local copy of options
-	let opt = CF.get().unwrap();
 	// Create a new readonly transaction
 	let mut tx = kvs.transaction(false, false).await?;
 	// Check if the supplied NS Login exists
@@ -283,14 +282,13 @@ pub async fn ns(
 }
 
 pub async fn su(
+	opt: &Config,
 	session: &mut Session,
 	user: String,
 	pass: String,
 ) -> Result<Option<String>, Error> {
-	// Get the config options
-	let opts = CF.get().unwrap();
 	// Attempt to verify the root user
-	if let Some(root) = &opts.pass {
+	if let Some(root) = &opt.pass {
 		if user == opts.user && &pass == root {
 			session.au = Arc::new(Auth::Kv);
 			return Ok(None);

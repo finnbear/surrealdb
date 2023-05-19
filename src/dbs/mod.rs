@@ -1,4 +1,4 @@
-use crate::cli::CF;
+use crate::cli::Config;
 use crate::err::Error;
 use once_cell::sync::OnceCell;
 use surrealdb::kvs::Datastore;
@@ -7,9 +7,7 @@ pub static DB: OnceCell<Datastore> = OnceCell::new();
 
 const LOG: &str = "surrealdb::dbs";
 
-pub async fn init() -> Result<(), Error> {
-	// Get local copy of options
-	let opt = CF.get().unwrap();
+pub async fn init(opt: &Config) -> Result<(), Error> {
 	// Log authentication options
 	match opt.strict {
 		true => info!(target: LOG, "Database strict mode is enabled"),

@@ -1,7 +1,4 @@
-use once_cell::sync::OnceCell;
 use std::net::SocketAddr;
-
-pub static CF: OnceCell<Config> = OnceCell::new();
 
 #[derive(Clone, Debug)]
 pub struct Config {
@@ -14,7 +11,7 @@ pub struct Config {
 	pub key: Option<String>,
 }
 
-pub fn init(matches: &clap::ArgMatches) {
+pub fn init(matches: &clap::ArgMatches) -> Config {
 	// Parse the server binding address
 	let bind = matches.value_of("bind").unwrap().parse::<SocketAddr>().unwrap();
 	// Parse the database endpoint path
@@ -28,8 +25,8 @@ pub fn init(matches: &clap::ArgMatches) {
 	let key = matches.value_of("web-key").map(|v| v.to_owned());
 	// Check if database strict mode is enabled
 	let strict = matches.is_present("strict");
-	// Store the new config object
-	let _ = CF.set(Config {
+	// Return the new config object
+	Config {
 		strict,
 		bind,
 		path,
@@ -37,5 +34,5 @@ pub fn init(matches: &clap::ArgMatches) {
 		pass,
 		crt,
 		key,
-	});
+	}
 }

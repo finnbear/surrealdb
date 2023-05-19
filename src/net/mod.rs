@@ -19,13 +19,13 @@ mod status;
 mod sync;
 mod version;
 
-use crate::cli::CF;
+use crate::cli::Config;
 use crate::err::Error;
 use warp::Filter;
 
 const LOG: &str = "surrealdb::net";
 
-pub async fn init() -> Result<(), Error> {
+pub async fn init(opt: &Config) -> Result<(), Error> {
 	// Setup web routes
 	let net = index::config()
 		// Version endpoint
@@ -47,7 +47,7 @@ pub async fn init() -> Result<(), Error> {
 		// RPC query endpoint
 		.or(rpc::config())
 		// SQL query endpoint
-		.or(sql::config())
+		.or(sql::config(opt))
 		// API query endpoint
 		.or(key::config())
 		// Catch all errors
@@ -64,9 +64,6 @@ pub async fn init() -> Result<(), Error> {
 	let net = net.with(log::write());
 	// Trace requests
 	let net = net.with(warp::trace::request());
-
-	// Get local copy of options
-	let opt = CF.get().unwrap();
 
 	info!(target: LOG, "Starting web server on {}", &opt.bind);
 

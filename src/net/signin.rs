@@ -47,6 +47,7 @@ pub fn config() -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejecti
 }
 
 async fn handler(
+	opt: &Config,
 	output: Option<String>,
 	body: Bytes,
 	mut session: Session,
@@ -56,7 +57,7 @@ async fn handler(
 	// Parse the provided data as JSON
 	match surrealdb::sql::json(data) {
 		// The provided value was an object
-		Ok(Value::Object(vars)) => match crate::iam::signin::signin(&mut session, vars).await {
+		Ok(Value::Object(vars)) => match crate::iam::signin::signin(opt, &mut session, vars).await {
 			// Authentication was successful
 			Ok(v) => match output.as_deref() {
 				// Simple serialization
