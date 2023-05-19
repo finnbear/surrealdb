@@ -1292,8 +1292,9 @@ dependencies = [
 
 [[package]]
 name = "dmp"
-version = "0.1.3"
-source = "git+https://github.com/finnbear/surrealdb_dmp.git?branch=bugfix_cleanup#fbe830eb408f613c388ef60309daf824433c7253"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bfaa1135a34d26e5cc5b4927a8935af887d4f30a5653a797c33b9a4222beb6d9"
 dependencies = [
  "urlencoding",
 ]
