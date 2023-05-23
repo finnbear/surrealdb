@@ -248,6 +248,14 @@ pub enum Error {
 	#[error("Reached excessive computation depth due to functions, subqueries, or futures")]
 	ComputationDepthExceeded,
 
+	/// Tried to serialize a key that was too large for the key-value store
+	#[error("Key was too large for the key-value store")]
+	KeySizeLimitExceeded,
+
+	/// Tried to serialize a value that was too large for the key-value store
+	#[error("Value was too large for the key-value store")]
+	ValueSizeLimitExceeded,
+
 	/// Can not execute CREATE query using the specified value
 	#[error("Can not execute CREATE query using value '{value}'")]
 	CreateStatement {

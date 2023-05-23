@@ -7,6 +7,10 @@ use std::ops::Range;
 use tikv::CheckLevel;
 use tikv::TransactionOptions;
 
+/// https://github.com/tikv/tikv/blob/c69c97f716ef29d86203726e636de81e747247c3/src/storage/config.rs#L24
+const MAX_KEY_SIZE: usize = 4 * 1024;
+const MAX_VALUE_SIZE: usize = 8 * 1000 * 1000;
+
 pub struct Datastore {
 	db: tikv::TransactionClient,
 }
