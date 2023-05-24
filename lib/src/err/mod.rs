@@ -8,7 +8,7 @@ use storekey::encode::Error as EncodeError;
 use thiserror::Error;
 
 /// An error originating from an embedded SurrealDB database.
-#[derive(Error, Debug)]
+#[derive(Error, Clone, Debug)]
 #[non_exhaustive]
 pub enum Error {
 	/// This error is used for ignoring a document when processing a query
@@ -149,8 +149,10 @@ pub enum Error {
 	QueryCancelled,
 
 	/// The query did not execute, because the transaction has failed
-	#[error("The query was not executed due to a failed transaction")]
-	QueryNotExecuted,
+	#[error("The query was not executed due to a failed transaction. {message}")]
+	QueryNotExecuted {
+		message: String,
+	},
 
 	/// The permissions do not allow for performing the specified query
 	#[error("You don't have permission to perform this query type")]

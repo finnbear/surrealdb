@@ -19,7 +19,7 @@ use tracing::instrument;
 use trice::Instant;
 
 pub(crate) struct Executor<'a> {
-	err: bool,
+	err: Option<Error>,
 	kvs: &'a Datastore,
 	txn: Option<Transaction>,
 }
@@ -29,15 +29,12 @@ impl<'a> Executor<'a> {
 		Executor {
 			kvs,
 			txn: None,
-			err: false,
+			err: None,
 		}
 	}
 
 	fn txn(&self) -> Transaction {
-		match self.txn.as_ref() {
-			Some(txn) => txn.clone(),
-			None => unreachable!(),
-		}
+		self.txn.clone().unwrap()
 	}
 
 	async fn begin(&mut self, write: bool) -> bool {
@@ -48,8 +45,8 @@ impl<'a> Executor<'a> {
 					self.txn = Some(Arc::new(Mutex::new(v)));
 					true
 				}
-				Err(_) => {
-					self.err = true;
+				Err(e) => {
+					self.err = Some(e);
 					false
 				}
 			},
@@ -58,31 +55,27 @@ impl<'a> Executor<'a> {
 
 	async fn commit(&mut self, local: bool) {
 		if local {
-			if let Some(txn) = self.txn.as_ref() {
-				let txn = txn.clone();
+			if let Some(txn) = self.txn.take() {
 				let mut txn = txn.lock().await;
-				let result = if self.err {
+				let result = if self.err.is_some() {
 					txn.cancel().await
 				} else {
 					txn.commit().await
 				};
-				if result.is_err() {
-					self.err = true;
+				if let Err(e) = result {
+					self.err = Some(e);
 				}
-				self.txn = None;
 			}
 		}
 	}
 
 	async fn cancel(&mut self, local: bool) {
 		if local {
-			if let Some(txn) = self.txn.as_ref() {
-				let txn = txn.clone();
+			if let Some(txn) = self.txn.take() {
 				let mut txn = txn.lock().await;
-				if txn.cancel().await.is_err() {
-					self.err = true;
+				if let Err(e) = txn.cancel().await {
+					self.err = Some(e);
 				}
-				self.txn = None;
 			}
 		}
 	}
@@ -95,15 +88,18 @@ impl<'a> Executor<'a> {
 	}
 
 	fn buf_commit(&self, v: Response) -> Response {
-		match &self.err {
-			true => Response {
+		if let Some(e) = &self.err {
+			Response {
 				time: v.time,
 				result: match v.result {
-					Ok(_) => Err(Error::QueryNotExecuted),
+					Ok(_) => Err(Error::QueryNotExecuted {
+						message: e.to_string(),
+					}),
 					Err(e) => Err(e),
 				},
-			},
-			_ => v,
+			}
+		} else {
+			v
 		}
 	}
 
@@ -138,7 +134,7 @@ impl<'a> Executor<'a> {
 			debug!(target: LOG, "Executing: {}", stm);
 			// Reset errors
 			if self.txn.is_none() {
-				self.err = false;
+				self.err = None;
 			}
 			// Get the statement start time
 			let now = Instant::now();
@@ -224,7 +220,7 @@ impl<'a> Executor<'a> {
 					// Create a transaction
 					let loc = self.begin(stm.writeable()).await;
 					// Check the transaction
-					match self.err {
+					match self.err.is_some() {
 						// We failed to create a transaction
 						true => Err(Error::TxFailure),
 						// The transaction began successfully
@@ -265,15 +261,17 @@ impl<'a> Executor<'a> {
 					}
 				}
 				// Process all other normal statements
-				_ => match self.err {
+				_ => match &self.err {
 					// This transaction has failed
-					true => Err(Error::QueryNotExecuted),
+					Some(e) => Err(Error::QueryNotExecuted {
+						message: e.to_string(),
+					}),
 					// Compute the statement normally
-					false => {
+					None => {
 						// Create a transaction
 						let loc = self.begin(stm.writeable()).await;
 						// Check the transaction
-						match self.err {
+						match self.err.is_some() {
 							// We failed to create a transaction
 							true => Err(Error::TxFailure),
 							// The transaction began successfully
@@ -299,9 +297,11 @@ impl<'a> Executor<'a> {
 								// Finalise transaction and return the result.
 								if res.is_ok() && stm.writeable() {
 									self.commit(loc).await;
-									if self.err {
+									if let Some(e) = &self.err {
 										// The commit failed
-										Err(Error::QueryNotExecuted)
+										Err(Error::QueryNotExecuted {
+											message: e.to_string(),
+										})
 									} else {
 										// Successful, committed result
 										res
@@ -323,8 +323,9 @@ impl<'a> Executor<'a> {
 				time: now.elapsed(),
 				// TODO: Replace with `inspect_err` once stable.
 				result: res.map_err(|e| {
-					// Mark the error.
-					self.err = true;
+					// TODO: Mark the error.
+					debug_assert!(self.err.is_some());
+					//self.err = Some(Error::);
 					e
 				}),
 			};
