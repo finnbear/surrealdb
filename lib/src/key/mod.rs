@@ -1,6 +1,7 @@
 ///
 /// KV              /
 /// NS              /!ns{ns}
+/// IP              /!ip{ip}
 ///
 /// Namespace       /*{ns}
 /// NL              /*{ns}!nl{us}
@@ -43,6 +44,7 @@ pub mod fd; // Stores a DEFINE FIELD config definition
 pub mod ft; // Stores a DEFINE TABLE AS config definition
 pub mod graph; // Stores a graph edge pointer
 pub mod index; // Stores an index entry
+pub mod ip; // Stores limits for anonymous IP addresses/ranges
 pub mod ix; // Stores a DEFINE INDEX config definition
 pub mod kv; // Stores the key prefix for all keys
 pub mod lq; // Stores a LIVE SELECT query definition on the database

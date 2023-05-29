@@ -210,6 +210,10 @@ pub enum Error {
 		value: String,
 	},
 
+	/// The requested ip limit does not exist
+	#[error("The IP does not exist")]
+	IpNotFound,
+
 	/// The requested scope does not exist
 	#[error("The scope '{value}' does not exist")]
 	ScNotFound {

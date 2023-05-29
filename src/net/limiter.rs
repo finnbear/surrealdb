@@ -28,20 +28,18 @@ enum BlockableUnit {
 }
 
 struct Limits {
-	/// How long previous request(s) are counted against the client
-	rate_limited_until: Instant,
+	/// How long previous request(s) are counted against the client (millis from utime).
+	rate_limited: u32,
 	/// How many extra requests have been allowed (counted towards a limit)
-	burst_used: usize,
-	// TODO: Concurrent connections to this particular server
-	//local_concurrency: usize,
-	// TODO: Concurrent connections to all servers (reported by KVS)
-	//total_concurrency: usize,
+	burst_used: u16,
+	// Concurrent connections (lower bound estimate)
+	concurrency: u16,
 }
 
 pub struct Limiter {
 	inner: Mutex<Inner>,
-	dur_per_req: Duration,
-	prune_interval: Duration,
+	dur_per_req: u32,
+	prune_interval: u32,
 }
 
 impl Default for Limiter {
@@ -105,6 +103,7 @@ impl Limiter {
 		};
 
 		// TODO: asynchronously consult the KVs for heavy-hitters.
+		let mut tx = kvs.transaction(false, false).await?;
 
 		let mut inner = self.inner.lock().unwrap();
 
@@ -137,6 +136,66 @@ impl Limiter {
 		}
 
 		ok
+	}
+}
+
+/// Implements a space efficient timestamp with millisecond precision
+pub mod utime {
+	use std::sync::atomic::{AtomicU64, Ordering};
+
+	/// If a timestamp is persisted (e.g. in the KVS) for longer than this,
+	/// it may exhibit unpredictable behavior.
+	pub const EXPIRY: u32 = u32::MAX / 4;
+
+	/// Returns an opaque timesamp with millisecond precision.
+	///
+	/// Logically although not numerically monotonic.
+	pub fn now() -> u32 {
+		use std::time::SystemTime;
+
+		let unix_millis = SystemTime::now()
+			.duration_since(SystemTime::UNIX_EPOCH)
+			.unwrap_or_default()
+			.as_millis() as u64;
+
+		static LAST: AtomicU64 = AtomicU64::new(0);
+
+		let monotonic_millis = LAST
+			.fetch_update(Ordering::Relaxed, Ordering::Relaxed, |last| Some(last.max(unix_millis)))
+			.unwrap()
+			.max(unix_millis);
+
+		let since_epoch = monotonic_millis as u32;
+		since_epoch
+	}
+
+	/// Returns if `after` is equal to or later than `before`.
+	pub fn is_on_or_after(after: u32, before: u32) -> bool {
+		// On or after (no overflow case):
+		// |--------------------------->|
+		//          b    a
+		//       `difference` is positive with magnitude close to 0
+		//
+		// On or after (overflow case)
+		// |---------------------------->|
+		// |  a                       b  |
+		//       `difference is negative with a magnitude close to u32::MAX
+		//
+		// Before (no overflow case):
+		// |--------------------------->|
+		//          a    b
+		//       `difference` is negative with magnitude close to 0
+		//
+		// Before (overflow case)
+		// |---------------------------->|
+		// |  b                       a  |
+		//       `difference is positive with a magnitude close to u32::MAX
+		let difference = after as i64 - before as i64;
+		(0..=difference).contains(&EXPIRY) || (u32::MAX as i64..u32::MAX + EXPIRY)
+	}
+
+	pub fn add(a: u32, b: u32) -> u32 {
+		a.wrapping_add(b)
 	}
 }
 
