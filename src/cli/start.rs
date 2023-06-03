@@ -12,6 +12,7 @@ use clap::Args;
 use ipnet::IpNet;
 use std::net::SocketAddr;
 use std::path::PathBuf;
+use std::time::Duration;
 
 #[derive(Args, Debug)]
 pub struct StartCommandArguments {
@@ -31,6 +32,10 @@ pub struct StartCommandArguments {
 	#[arg(env = "SURREAL_ADDR", long = "addr")]
 	#[arg(default_value = "127.0.0.1/32")]
 	allowed_networks: Vec<IpNet>,
+	#[arg(help = "The maximum duration of a query")]
+	#[arg(env = "SURREAL_QUERY_TIMEOUT", long)]
+	#[arg(value_parser = super::validator::duration)]
+	query_timeout: Option<Duration>,
 	#[arg(help = "The hostname or ip address to listen for connections on")]
 	#[arg(env = "SURREAL_BIND", short = 'b', long = "bind")]
 	#[arg(default_value = "0.0.0.0:8000")]
@@ -89,6 +94,7 @@ pub async fn init(
 		username: user,
 		password: pass,
 		listen_addresses,
+		query_timeout,,
 		web,
 		strict,
 		log: CustomEnvFilter(log),
@@ -107,6 +113,7 @@ pub async fn init(
 	// Setup the cli options
 	let _ = config::CF.set(Config {
 		strict,
+		query_timeout,
 		bind: listen_addresses.first().cloned().unwrap(),
 		path,
 		user,
