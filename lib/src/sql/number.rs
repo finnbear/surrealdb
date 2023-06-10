@@ -16,6 +16,7 @@ use std::fmt::{self, Display, Formatter};
 use std::hash;
 use std::iter::Product;
 use std::iter::Sum;
+use std::num::FpCategory;
 use std::ops;
 use std::str::FromStr;
 
@@ -162,6 +163,10 @@ impl Display for Number {
 		match self {
 			Number::Int(v) => Display::fmt(v, f),
 			Number::Float(v) => {
+				match v.classify() {
+					FpCategory::Nan => "math::NAN",
+					FpCategory::Infinite => 
+				}
 				if v.is_finite() {
 					// Add suffix to distinguish between int and float
 					write!(f, "{v}f")
