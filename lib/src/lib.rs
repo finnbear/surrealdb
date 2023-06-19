@@ -20,7 +20,7 @@
 //! use surrealdb::{Result, Surreal};
 //! use surrealdb::sql;
 //! use surrealdb::opt::auth::Root;
-//! use surrealdb::engines::remote::ws::Ws;
+//! use surrealdb::engine::remote::ws::Ws;
 //!
 //! #[derive(Serialize, Deserialize)]
 //! struct Name {
@@ -49,7 +49,7 @@
 //!     db.use_ns("namespace").use_db("database").await?;
 //!
 //!     // Create a new person with a random ID
-//!     let created: Person = db.create("person")
+//!     let created: Vec<Person> = db.create("person")
 //!         .content(Person {
 //!             title: "Founder & CEO".into(),
 //!             name: Name {
@@ -61,7 +61,7 @@
 //!         .await?;
 //!
 //!     // Create a new person with a specific ID
-//!     let created: Person = db.create(("person", "jaime"))
+//!     let created: Option<Person> = db.create(("person", "jaime"))
 //!         .content(Person {
 //!             title: "Founder & COO".into(),
 //!             name: Name {
@@ -73,7 +73,7 @@
 //!         .await?;
 //!
 //!     // Update a person record with a specific ID
-//!     let updated: Person = db.update(("person", "jaime"))
+//!     let updated: Option<Person> = db.update(("person", "jaime"))
 //!         .merge(json!({"marketing": true}))
 //!         .await?;
 //!
@@ -81,11 +81,11 @@
 //!     let people: Vec<Person> = db.select("person").await?;
 //!
 //!     // Perform a custom advanced query
-//!     let sql = sql! {
+//!     let sql = r#"
 //!         SELECT marketing, count()
 //!         FROM type::table($table)
 //!         GROUP BY marketing
-//!     };
+//!     "#;
 //!
 //!     let groups = db.query(sql)
 //!         .bind(("table", "person"))
@@ -107,7 +107,6 @@ extern crate log;
 mod mac;
 
 mod api;
-mod cnf;
 mod ctx;
 mod doc;
 mod exe;
@@ -117,16 +116,30 @@ mod key;
 pub mod sql;
 
 #[doc(hidden)]
+pub mod cnf;
+#[doc(hidden)]
 pub mod dbs;
 #[doc(hidden)]
 pub mod env;
 #[doc(hidden)]
 pub mod err;
+#[cfg(any(
+	feature = "kv-mem",
+	feature = "kv-tikv",
+	feature = "kv-rocksdb",
+	feature = "kv-speedb",
+	feature = "kv-fdb",
+	feature = "kv-indxdb",
+))]
+#[doc(hidden)]
+pub mod iam;
+#[doc(hidden)]
+pub mod idx;
 #[doc(hidden)]
 pub mod kvs;
 
 #[doc(inline)]
-pub use api::engines;
+pub use api::engine;
 #[doc(inline)]
 pub use api::method;
 #[doc(inline)]
@@ -157,12 +170,12 @@ pub mod error {
 }
 
 /// An error originating from the SurrealDB client library
-#[derive(thiserror::Error, Debug)]
+#[derive(Debug, thiserror::Error, serde::Serialize)]
 pub enum Error {
 	/// An error with an embedded storage engine
-	#[error("Database error: {0}")]
+	#[error("{0}")]
 	Db(#[from] crate::error::Db),
 	/// An error with a remote database instance
-	#[error("API error: {0}")]
+	#[error("{0}")]
 	Api(#[from] crate::error::Api),
 }

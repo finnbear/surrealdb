@@ -1,3 +1,4 @@
+pub mod client_ip;
 mod export;
 mod fail;
 mod head;
@@ -11,6 +12,7 @@ mod output;
 mod params;
 mod rpc;
 mod session;
+mod signals;
 mod signin;
 mod signup;
 mod sql;
@@ -61,6 +63,8 @@ pub async fn init() -> Result<(), Error> {
 	let net = net.with(head::cors());
 	// Log all requests to the console
 	let net = net.with(log::write());
+	// Trace requests
+	let net = net.with(warp::trace::request());
 
 	// Get local copy of options
 	let opt = CF.get().unwrap();
@@ -74,21 +78,29 @@ pub async fn init() -> Result<(), Error> {
 			.cert_path(c)
 			.key_path(k)
 			.bind_with_graceful_shutdown(opt.bind, async move {
-				tokio::signal::ctrl_c().await.expect("Failed to listen to shutdown signal");
+				// Capture the shutdown signals and log that the graceful shutdown has started
+				let result = signals::listen().await.expect("Failed to listen to shutdown signal");
+				info!(target: LOG, "{} received. Start graceful shutdown...", result);
 			});
 		// Log the server startup status
 		info!(target: LOG, "Started web server on {}", &adr);
 		// Run the server forever
-		srv.await
+		srv.await;
+		// Log the server shutdown event
+		info!(target: LOG, "Shutdown complete. Bye!")
 	} else {
 		// Bind the server to the desired port
 		let (adr, srv) = warp::serve(net).bind_with_graceful_shutdown(opt.bind, async move {
-			tokio::signal::ctrl_c().await.expect("Failed to listen to shutdown signal");
+			// Capture the shutdown signals and log that the graceful shutdown has started
+			let result = signals::listen().await.expect("Failed to listen to shutdown signal");
+			info!(target: LOG, "{} received. Start graceful shutdown...", result);
 		});
 		// Log the server startup status
 		info!(target: LOG, "Started web server on {}", &adr);
 		// Run the server forever
-		srv.await
+		srv.await;
+		// Log the server shutdown event
+		info!(target: LOG, "Shutdown complete. Bye!")
 	};
 
 	Ok(())

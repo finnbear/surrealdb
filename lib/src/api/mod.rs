@@ -1,6 +1,6 @@
 //! Functionality for connecting to local and remote databases
 
-pub mod engines;
+pub mod engine;
 pub mod err;
 pub mod method;
 pub mod opt;
@@ -22,6 +22,10 @@ use std::future::IntoFuture;
 use std::marker::PhantomData;
 use std::pin::Pin;
 use std::sync::Arc;
+#[cfg(not(target_arch = "wasm32"))]
+use tokio::spawn;
+#[cfg(target_arch = "wasm32")]
+use wasm_bindgen_futures::spawn_local as spawn;
 
 /// A specialized `Result` type
 pub type Result<T> = std::result::Result<T, crate::Error>;
@@ -34,6 +38,7 @@ pub trait Connection: conn::Connection {}
 
 /// The future returned when creating a new SurrealDB instance
 #[derive(Debug)]
+#[must_use = "futures do nothing unless you `.await` or poll them"]
 pub struct Connect<'r, C: Connection, Response> {
 	router: Option<&'r OnceCell<Arc<Router<C>>>>,
 	address: Result<Endpoint>,
@@ -63,7 +68,7 @@ where
 	/// ```no_run
 	/// # #[tokio::main]
 	/// # async fn main() -> surrealdb::Result<()> {
-	/// use surrealdb::engines::remote::ws::Ws;
+	/// use surrealdb::engine::remote::ws::Ws;
 	/// use surrealdb::Surreal;
 	///
 	/// let db = Surreal::new::<Ws>("localhost:8000")
@@ -72,7 +77,6 @@ where
 	/// # Ok(())
 	/// # }
 	/// ```
-	#[must_use]
 	pub const fn with_capacity(mut self, capacity: usize) -> Self {
 		self.capacity = capacity;
 		self
@@ -124,7 +128,6 @@ where
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq, Ord, PartialOrd, Hash)]
 pub(crate) enum ExtraFeatures {
-	Auth,
 	Backup,
 }
 
@@ -140,7 +143,7 @@ where
 {
 	fn check_server_version(&self) {
 		let conn = self.clone();
-		tokio::spawn(async move {
+		spawn(async move {
 			let (versions, build_meta) = SUPPORTED_VERSIONS;
 			// invalid version requirements should be caught during development
 			let req = VersionReq::parse(versions).expect("valid supported versions");

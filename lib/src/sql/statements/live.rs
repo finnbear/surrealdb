@@ -1,7 +1,6 @@
 use crate::ctx::Context;
 use crate::dbs::Level;
 use crate::dbs::Options;
-use crate::dbs::Transaction;
 use crate::err::Error;
 use crate::sql::comment::shouldbespace;
 use crate::sql::cond::{cond, Cond};
@@ -31,13 +30,8 @@ pub struct LiveStatement {
 }
 
 impl LiveStatement {
-	pub(crate) async fn compute(
-		&self,
-		ctx: &Context<'_>,
-		opt: &Options,
-		txn: &Transaction,
-		doc: Option<&Value>,
-	) -> Result<Value, Error> {
+	/// Process this type returning a computed simple Value
+	pub(crate) async fn compute(&self, ctx: &Context<'_>, opt: &Options) -> Result<Value, Error> {
 		// Allowed to run?
 		opt.realtime()?;
 		// Selected DB?
@@ -45,11 +39,11 @@ impl LiveStatement {
 		// Allowed to run?
 		opt.check(Level::No)?;
 		// Clone transaction
-		let run = txn.clone();
+		let txn = ctx.clone_transaction()?;
 		// Claim transaction
-		let mut run = run.lock().await;
+		let mut run = txn.lock().await;
 		// Process the live query table
-		match self.what.compute(ctx, opt, txn, doc).await? {
+		match self.what.compute(ctx, opt).await? {
 			Value::Table(tb) => {
 				// Insert the live query
 				let key = crate::key::lq::new(opt.ns(), opt.db(), &self.id);
@@ -73,10 +67,10 @@ impl fmt::Display for LiveStatement {
 	fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
 		write!(f, "LIVE SELECT {} FROM {}", self.expr, self.what)?;
 		if let Some(ref v) = self.cond {
-			write!(f, " {}", v)?
+			write!(f, " {v}")?
 		}
 		if let Some(ref v) = self.fetch {
-			write!(f, " {}", v)?
+			write!(f, " {v}")?
 		}
 		Ok(())
 	}
@@ -85,7 +79,7 @@ impl fmt::Display for LiveStatement {
 pub fn live(i: &str) -> IResult<&str, LiveStatement> {
 	let (i, _) = tag_no_case("LIVE SELECT")(i)?;
 	let (i, _) = shouldbespace(i)?;
-	let (i, expr) = fields(i)?;
+	let (i, expr) = alt((map(tag_no_case("DIFF"), |_| Fields::default()), fields))(i)?;
 	let (i, _) = shouldbespace(i)?;
 	let (i, _) = tag_no_case("FROM")(i)?;
 	let (i, _) = shouldbespace(i)?;

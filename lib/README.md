@@ -44,8 +44,9 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::borrow::Cow;
 use surrealdb::sql;
+use surrealdb::sql::Thing;
 use surrealdb::Surreal;
-use surrealdb::engines::remote::ws::Ws;
+use surrealdb::engine::remote::ws::Ws;
 use surrealdb::opt::auth::Root;
 
 #[derive(Serialize, Deserialize)]
@@ -57,7 +58,7 @@ struct Name {
 #[derive(Serialize, Deserialize)]
 struct Person {
     #[serde(skip_serializing)]
-    id: Option<String>,
+    id: Option<Thing>,
     title: Cow<'static, str>,
     name: Name,
     marketing: bool,
@@ -78,7 +79,7 @@ async fn main() -> surrealdb::Result<()> {
     db.use_ns("namespace").use_db("database").await?;
 
     // Create a new person with a random ID
-    let tobie: Person = db
+    let tobie: Vec<Person> = db
         .create("person")
         .content(Person {
             id: None,
@@ -91,10 +92,8 @@ async fn main() -> surrealdb::Result<()> {
         })
         .await?;
 
-    assert!(tobie.id.is_some());
-
     // Create a new person with a specific ID
-    let mut jaime: Person = db
+    let mut jaime: Option<Person> = db
         .create(("person", "jaime"))
         .content(Person {
             id: None,
@@ -107,39 +106,31 @@ async fn main() -> surrealdb::Result<()> {
         })
         .await?;
 
-    assert_eq!(jaime.id.unwrap(), "person:jaime");
-
     // Update a person record with a specific ID
     jaime = db
         .update(("person", "jaime"))
         .merge(json!({ "marketing": true }))
         .await?;
 
-    assert!(jaime.marketing);
-
     // Select all people records
     let people: Vec<Person> = db.select("person").await?;
 
-    assert!(!people.is_empty());
-
     // Perform a custom advanced query
-    let sql = sql! {
+    let sql = r#"
         SELECT marketing, count()
         FROM type::table($table)
         GROUP BY marketing
-    };
+    "#;
 
     let groups = db.query(sql)
         .bind(("table", "person"))
         .await?;
 
-    dbg!(groups);
-
     // Delete all people upto but not including Jaime
-    db.delete("person").range(.."jaime").await?;
+    let people: Vec<Person> = db.delete("person").range(.."jaime").await?;
 
     // Delete all people
-    db.delete("person").await?;
+    let people: Vec<Person> = db.delete("person").await?;
 
     Ok(())
 }

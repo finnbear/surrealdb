@@ -5,17 +5,15 @@ use crate::api::conn::Method;
 use crate::api::conn::Param;
 use crate::api::conn::Route;
 use crate::api::conn::Router;
-use crate::api::opt::from_value;
 use crate::api::opt::Endpoint;
 use crate::api::opt::IntoEndpoint;
 use crate::api::Connect;
 use crate::api::ExtraFeatures;
-use crate::api::Response as QueryResponse;
 use crate::api::Result;
 use crate::api::Surreal;
+use crate::dbs::Level;
 use flume::Receiver;
 use once_cell::sync::OnceCell;
-use serde::de::DeserializeOwned;
 use std::collections::HashSet;
 use std::future::Future;
 use std::marker::PhantomData;
@@ -36,6 +34,9 @@ impl IntoEndpoint<Test> for () {
 			strict: false,
 			#[cfg(any(feature = "native-tls", feature = "rustls"))]
 			tls_config: None,
+			auth: Level::No,
+			username: String::new(),
+			password: String::new(),
 		})
 	}
 }
@@ -47,7 +48,7 @@ pub struct Client {
 
 impl Surreal<Client> {
 	pub fn connect<P>(
-		&'static self,
+		&self,
 		address: impl IntoEndpoint<P, Client = Client>,
 	) -> Connect<Client, ()> {
 		Connect {
@@ -76,7 +77,6 @@ impl Connection for Client {
 		Box::pin(async move {
 			let (route_tx, route_rx) = flume::bounded(capacity);
 			let mut features = HashSet::new();
-			features.insert(ExtraFeatures::Auth);
 			features.insert(ExtraFeatures::Backup);
 			let router = Router {
 				features,
@@ -110,35 +110,6 @@ impl Connection for Client {
 				.map_err(ToString::to_string)
 				.unwrap();
 			Ok(receiver)
-		})
-	}
-
-	fn recv<R>(
-		&mut self,
-		rx: Receiver<Result<DbResponse>>,
-	) -> Pin<Box<dyn Future<Output = Result<R>> + Send + Sync + '_>>
-	where
-		R: DeserializeOwned,
-	{
-		Box::pin(async move {
-			let result = rx.into_recv_async().await.unwrap();
-			match result.unwrap() {
-				DbResponse::Other(value) => from_value(value),
-				DbResponse::Query(..) => unreachable!(),
-			}
-		})
-	}
-
-	fn recv_query(
-		&mut self,
-		rx: Receiver<Result<DbResponse>>,
-	) -> Pin<Box<dyn Future<Output = Result<QueryResponse>> + Send + Sync + '_>> {
-		Box::pin(async move {
-			let result = rx.into_recv_async().await.unwrap();
-			match result.unwrap() {
-				DbResponse::Query(results) => Ok(results),
-				DbResponse::Other(..) => unreachable!(),
-			}
 		})
 	}
 }

@@ -23,6 +23,7 @@ mod signin;
 mod signup;
 mod unset;
 mod update;
+mod use_db;
 mod use_ns;
 mod version;
 
@@ -58,8 +59,8 @@ pub use signin::Signin;
 pub use signup::Signup;
 pub use unset::Unset;
 pub use update::Update;
+pub use use_db::UseDb;
 pub use use_ns::UseNs;
-pub use use_ns::UseNsDb;
 pub use version::Version;
 
 use crate::api::conn::Method;
@@ -67,16 +68,16 @@ use crate::api::opt;
 use crate::api::opt::auth;
 use crate::api::opt::auth::Credentials;
 use crate::api::opt::auth::Jwt;
-use crate::api::opt::from_json;
 use crate::api::opt::IntoEndpoint;
 use crate::api::Connect;
 use crate::api::Connection;
 use crate::api::ExtractRouter;
 use crate::api::Surreal;
+use crate::sql::to_value;
 use crate::sql::Uuid;
+use crate::sql::Value;
 use once_cell::sync::OnceCell;
 use serde::Serialize;
-use serde_json::json;
 use std::marker::PhantomData;
 use std::path::Path;
 
@@ -128,8 +129,8 @@ where
 	/// use std::borrow::Cow;
 	/// use surrealdb::Surreal;
 	/// use surrealdb::opt::auth::Root;
-	/// use surrealdb::engines::remote::ws::Ws;
-	/// use surrealdb::engines::remote::ws::Client;
+	/// use surrealdb::engine::remote::ws::Ws;
+	/// use surrealdb::engine::remote::ws::Client;
 	///
 	/// // Creates a new static instance of the client
 	/// static DB: Surreal<Client> = Surreal::init();
@@ -169,7 +170,7 @@ where
 	/// use serde::{Serialize, Deserialize};
 	/// use std::borrow::Cow;
 	/// use surrealdb::Surreal;
-	/// use surrealdb::engines::any::Any;
+	/// use surrealdb::engine::any::Any;
 	/// use surrealdb::opt::auth::Root;
 	///
 	/// // Creates a new static instance of the client
@@ -215,7 +216,7 @@ where
 	///
 	/// ```no_run
 	/// use surrealdb::Surreal;
-	/// use surrealdb::engines::remote::ws::{Ws, Wss};
+	/// use surrealdb::engine::remote::ws::{Ws, Wss};
 	///
 	/// # #[tokio::main]
 	/// # async fn main() -> surrealdb::Result<()> {
@@ -252,8 +253,8 @@ where
 	/// ```no_run
 	/// # #[tokio::main]
 	/// # async fn main() -> surrealdb::Result<()> {
-	/// # let db = surrealdb::engines::any::connect("mem://").await?;
-	/// db.use_ns("namespace").use_db("database").await?;
+	/// # let db = surrealdb::engine::any::connect("mem://").await?;
+	/// db.use_ns("namespace").await?;
 	/// # Ok(())
 	/// # }
 	/// ```
@@ -261,6 +262,26 @@ where
 		UseNs {
 			router: self.router.extract(),
 			ns: ns.into(),
+		}
+	}
+
+	/// Switch to a specific database
+	///
+	/// # Examples
+	///
+	/// ```no_run
+	/// # #[tokio::main]
+	/// # async fn main() -> surrealdb::Result<()> {
+	/// # let db = surrealdb::engine::any::connect("mem://").await?;
+	/// db.use_db("database").await?;
+	/// # Ok(())
+	/// # }
+	/// ```
+	pub fn use_db(&self, db: impl Into<String>) -> UseDb<C> {
+		UseDb {
+			router: self.router.extract(),
+			ns: Value::None,
+			db: db.into(),
 		}
 	}
 
@@ -279,7 +300,7 @@ where
 	///
 	/// # #[tokio::main]
 	/// # async fn main() -> surrealdb::Result<()> {
-	/// # let db = surrealdb::engines::any::connect("mem://").await?;
+	/// # let db = surrealdb::engine::any::connect("mem://").await?;
 	/// #
 	/// // Assign the variable on the connection
 	/// db.set("name", Name {
@@ -300,7 +321,7 @@ where
 		Set {
 			router: self.router.extract(),
 			key: key.into(),
-			value: Ok(from_json(json!(value))),
+			value: to_value(value).map_err(Into::into),
 		}
 	}
 
@@ -319,7 +340,7 @@ where
 	///
 	/// # #[tokio::main]
 	/// # async fn main() -> surrealdb::Result<()> {
-	/// # let db = surrealdb::engines::any::connect("mem://").await?;
+	/// # let db = surrealdb::engine::any::connect("mem://").await?;
 	/// #
 	/// // Assign the variable on the connection
 	/// db.set("name", Name {
@@ -345,10 +366,6 @@ where
 
 	/// Signs up a user to a specific authentication scope
 	///
-	/// # Support
-	///
-	/// Currently only supported by the WS and HTTP protocols.
-	///
 	/// # Examples
 	///
 	/// ```no_run
@@ -365,7 +382,7 @@ where
 	///
 	/// # #[tokio::main]
 	/// # async fn main() -> surrealdb::Result<()> {
-	/// # let db = surrealdb::engines::any::connect("mem://").await?;
+	/// # let db = surrealdb::engine::any::connect("mem://").await?;
 	/// #
 	/// // Sign in as root
 	/// db.signin(Root {
@@ -378,11 +395,11 @@ where
 	/// db.use_ns("namespace").use_db("database").await?;
 	///
 	/// // Define the scope
-	/// let sql = sql! {
+	/// let sql = r#"
 	///     DEFINE SCOPE user_scope SESSION 24h
 	///     SIGNUP ( CREATE user SET email = $email, password = crypto::argon2::generate($password) )
 	///     SIGNIN ( SELECT * FROM user WHERE email = $email AND crypto::argon2::compare(password, $password) )
-	/// };
+	/// "#;
 	/// db.query(sql).await?.check()?;
 	///
 	/// // Sign a user up
@@ -402,16 +419,12 @@ where
 	pub fn signup<R>(&self, credentials: impl Credentials<auth::Signup, R>) -> Signup<C, R> {
 		Signup {
 			router: self.router.extract(),
-			credentials: Ok(from_json(json!(credentials))),
+			credentials: to_value(credentials).map_err(Into::into),
 			response_type: PhantomData,
 		}
 	}
 
 	/// Signs this connection in to a specific authentication scope
-	///
-	/// # Support
-	///
-	/// Currently only supported by the WS and HTTP protocols.
 	///
 	/// # Examples
 	///
@@ -424,7 +437,7 @@ where
 	///
 	/// # #[tokio::main]
 	/// # async fn main() -> surrealdb::Result<()> {
-	/// # let db = surrealdb::engines::any::connect("mem://").await?;
+	/// # let db = surrealdb::engine::any::connect("mem://").await?;
 	/// #
 	/// // Sign in as root
 	/// db.signin(Root {
@@ -437,7 +450,7 @@ where
 	/// db.use_ns("namespace").use_db("database").await?;
 	///
 	/// // Define the login
-	/// let sql = sql!(DEFINE LOGIN johndoe ON NAMESPACE PASSWORD "password123");
+	/// let sql = "DEFINE LOGIN johndoe ON NAMESPACE PASSWORD 'password123'";
 	/// db.query(sql).await?.check()?;
 	///
 	/// // Sign a user in
@@ -460,7 +473,7 @@ where
 	///
 	/// # #[tokio::main]
 	/// # async fn main() -> surrealdb::Result<()> {
-	/// # let db = surrealdb::engines::any::connect("mem://").await?;
+	/// # let db = surrealdb::engine::any::connect("mem://").await?;
 	/// #
 	/// // Sign in as root
 	/// db.signin(Root {
@@ -473,7 +486,7 @@ where
 	/// db.use_ns("namespace").use_db("database").await?;
 	///
 	/// // Define the login
-	/// let sql = sql!(DEFINE LOGIN johndoe ON DATABASE PASSWORD "password123");
+	/// let sql = "DEFINE LOGIN johndoe ON DATABASE PASSWORD 'password123'";
 	/// db.query(sql).await?.check()?;
 	///
 	/// // Sign a user in
@@ -503,7 +516,7 @@ where
 	///
 	/// # #[tokio::main]
 	/// # async fn main() -> surrealdb::Result<()> {
-	/// # let db = surrealdb::engines::any::connect("mem://").await?;
+	/// # let db = surrealdb::engine::any::connect("mem://").await?;
 	/// #
 	/// // Select the namespace/database to use
 	/// db.use_ns("namespace").use_db("database").await?;
@@ -525,23 +538,19 @@ where
 	pub fn signin<R>(&self, credentials: impl Credentials<auth::Signin, R>) -> Signin<C, R> {
 		Signin {
 			router: self.router.extract(),
-			credentials: Ok(from_json(json!(credentials))),
+			credentials: to_value(credentials).map_err(Into::into),
 			response_type: PhantomData,
 		}
 	}
 
 	/// Invalidates the authentication for the current connection
 	///
-	/// # Support
-	///
-	/// Currently only supported by the WS and HTTP protocols.
-	///
 	/// # Examples
 	///
 	/// ```no_run
 	/// # #[tokio::main]
 	/// # async fn main() -> surrealdb::Result<()> {
-	/// # let db = surrealdb::engines::any::connect("mem://").await?;
+	/// # let db = surrealdb::engine::any::connect("mem://").await?;
 	/// db.invalidate().await?;
 	/// # Ok(())
 	/// # }
@@ -554,16 +563,12 @@ where
 
 	/// Authenticates the current connection with a JWT token
 	///
-	/// # Support
-	///
-	/// Currently only supported by the WS and HTTP protocols.
-	///
 	/// # Examples
 	///
 	/// ```no_run
 	/// # #[tokio::main]
 	/// # async fn main() -> surrealdb::Result<()> {
-	/// # let db = surrealdb::engines::any::connect("mem://").await?;
+	/// # let db = surrealdb::engine::any::connect("mem://").await?;
 	/// # let token = String::new();
 	/// db.authenticate(token).await?;
 	/// # Ok(())
@@ -587,15 +592,15 @@ where
 	/// # struct Person;
 	/// # #[tokio::main]
 	/// # async fn main() -> surrealdb::Result<()> {
-	/// # let db = surrealdb::engines::any::connect("mem://").await?;
+	/// # let db = surrealdb::engine::any::connect("mem://").await?;
 	/// #
 	/// // Select the namespace/database to use
 	/// db.use_ns("namespace").use_db("database").await?;
 	///
 	/// // Run queries
 	/// let mut result = db
-	///     .query(sql!(CREATE person))
-	///     .query(sql!(SELECT * FROM type::table($table)))
+	///     .query("CREATE person")
+	///     .query("SELECT * FROM type::table($table)")
 	///     .bind(("table", "person"))
 	///     .await?;
 	///
@@ -626,7 +631,7 @@ where
 	/// #
 	/// # #[tokio::main]
 	/// # async fn main() -> surrealdb::Result<()> {
-	/// # let db = surrealdb::engines::any::connect("mem://").await?;
+	/// # let db = surrealdb::engine::any::connect("mem://").await?;
 	/// #
 	/// // Select the namespace/database to use
 	/// db.use_ns("namespace").use_db("database").await?;
@@ -636,9 +641,6 @@ where
 	///
 	/// // Select a specific record from a table
 	/// let person: Option<Person> = db.select(("person", "h5wxrf2ewk8xjxosxtyc")).await?;
-	///
-	/// // You can skip an unnecessary option if you know the record already exists
-	/// let person: Person = db.select(("person", "h5wxrf2ewk8xjxosxtyc")).await?;
 	/// #
 	/// # Ok(())
 	/// # }
@@ -676,16 +678,16 @@ where
 	///
 	/// # #[tokio::main]
 	/// # async fn main() -> surrealdb::Result<()> {
-	/// # let db = surrealdb::engines::any::connect("mem://").await?;
+	/// # let db = surrealdb::engine::any::connect("mem://").await?;
 	/// #
 	/// // Select the namespace/database to use
 	/// db.use_ns("namespace").use_db("database").await?;
 	///
 	/// // Create a record with a random ID
-	/// let person: Person = db.create("person").await?;
+	/// let person: Vec<Person> = db.create("person").await?;
 	///
 	/// // Create a record with a specific ID
-	/// let record: Person = db.create(("person", "tobie"))
+	/// let record: Option<Person> = db.create(("person", "tobie"))
 	///     .content(User {
 	///         name: "Tobie",
 	///         settings: Settings {
@@ -732,7 +734,7 @@ where
 	///
 	/// # #[tokio::main]
 	/// # async fn main() -> surrealdb::Result<()> {
-	/// # let db = surrealdb::engines::any::connect("mem://").await?;
+	/// # let db = surrealdb::engine::any::connect("mem://").await?;
 	/// #
 	/// // Select the namespace/database to use
 	/// db.use_ns("namespace").use_db("database").await?;
@@ -782,7 +784,7 @@ where
 	///
 	/// # #[tokio::main]
 	/// # async fn main() -> surrealdb::Result<()> {
-	/// # let db = surrealdb::engines::any::connect("mem://").await?;
+	/// # let db = surrealdb::engine::any::connect("mem://").await?;
 	/// #
 	/// // Select the namespace/database to use
 	/// db.use_ns("namespace").use_db("database").await?;
@@ -836,7 +838,7 @@ where
 	///
 	/// # #[tokio::main]
 	/// # async fn main() -> surrealdb::Result<()> {
-	/// # let db = surrealdb::engines::any::connect("mem://").await?;
+	/// # let db = surrealdb::engine::any::connect("mem://").await?;
 	/// #
 	/// // Select the namespace/database to use
 	/// db.use_ns("namespace").use_db("database").await?;
@@ -870,18 +872,21 @@ where
 	/// # Examples
 	///
 	/// ```no_run
+	/// # #[derive(serde::Deserialize)]
+	/// # struct Person;
+	/// #
 	/// # #[tokio::main]
 	/// # async fn main() -> surrealdb::Result<()> {
-	/// # let db = surrealdb::engines::any::connect("mem://").await?;
+	/// # let db = surrealdb::engine::any::connect("mem://").await?;
 	/// #
 	/// // Select the namespace/database to use
 	/// db.use_ns("namespace").use_db("database").await?;
 	///
 	/// // Delete all records from a table
-	/// db.delete("person").await?;
+	/// let people: Vec<Person> = db.delete("person").await?;
 	///
 	/// // Delete a specific record from a table
-	/// db.delete(("person", "h5wxrf2ewk8xjxosxtyc")).await?;
+	/// let person: Option<Person> = db.delete(("person", "h5wxrf2ewk8xjxosxtyc")).await?;
 	/// #
 	/// # Ok(())
 	/// # }
@@ -902,7 +907,7 @@ where
 	/// ```no_run
 	/// # #[tokio::main]
 	/// # async fn main() -> surrealdb::Result<()> {
-	/// # let db = surrealdb::engines::any::connect("mem://").await?;
+	/// # let db = surrealdb::engine::any::connect("mem://").await?;
 	/// let version = db.version().await?;
 	/// # Ok(())
 	/// # }
@@ -920,7 +925,7 @@ where
 	/// ```no_run
 	/// # #[tokio::main]
 	/// # async fn main() -> surrealdb::Result<()> {
-	/// # let db = surrealdb::engines::any::connect("mem://").await?;
+	/// # let db = surrealdb::engine::any::connect("mem://").await?;
 	/// db.health().await?;
 	/// # Ok(())
 	/// # }
@@ -958,7 +963,7 @@ where
 	/// ```no_run
 	/// # #[tokio::main]
 	/// # async fn main() -> surrealdb::Result<()> {
-	/// # let db = surrealdb::engines::any::connect("mem://").await?;
+	/// # let db = surrealdb::engine::any::connect("mem://").await?;
 	/// // Select the namespace/database to use
 	/// db.use_ns("namespace").use_db("database").await?;
 	///
@@ -987,7 +992,7 @@ where
 	/// ```no_run
 	/// # #[tokio::main]
 	/// # async fn main() -> surrealdb::Result<()> {
-	/// # let db = surrealdb::engines::any::connect("mem://").await?;
+	/// # let db = surrealdb::engine::any::connect("mem://").await?;
 	/// // Select the namespace/database to use
 	/// db.use_ns("namespace").use_db("database").await?;
 	///

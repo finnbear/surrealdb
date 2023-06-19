@@ -1,28 +1,28 @@
 use crate::ctx::Context;
 use crate::dbs::Options;
-use crate::dbs::Transaction;
 use crate::err::Error;
 use crate::fnc;
 use crate::sql::error::IResult;
-use crate::sql::operator::{binary_operator, Operator};
+use crate::sql::operator::{binary_operator, unary_operator, Operator};
 use crate::sql::value::{single, value, Value};
 use serde::{Deserialize, Serialize};
 use std::fmt;
 use std::str;
 
-use super::operator::unary_operator;
+pub(crate) const TOKEN: &str = "$surrealdb::private::sql::Expression";
 
 #[derive(Clone, Debug, Eq, PartialEq, PartialOrd, Serialize, Deserialize, Hash)]
+#[serde(rename = "$surrealdb::private::sql::Expression")]
 pub enum Expression {
-	Unary{
+	Unary {
 		o: Operator,
 		v: Value,
-	}
-	Binary{
+	},
+	Binary {
 		l: Value,
 		o: Operator,
 		r: Value,
-	}
+	},
 }
 
 impl Default for Expression {
@@ -37,7 +37,7 @@ impl Default for Expression {
 
 impl Expression {
 	/// Create a new binary expression
-	fn new(l: Value, o: Operator, r: Value) -> Self {
+	pub(crate) fn new(l: Value, o: Operator, r: Value) -> Self {
 		Self::Binary {
 			l,
 			o,
@@ -47,7 +47,9 @@ impl Expression {
 	/// Augment an existing expression
 	fn augment(mut self, l: Value, o: Operator) -> Self {
 		match self {
-			Self::Unary { .. } => {
+			Self::Unary {
+				..
+			} => {
 				Self::new(Value::from(self), o, l);
 			}
 		}
@@ -70,14 +72,9 @@ impl Expression {
 }
 
 impl Expression {
-	pub(crate) async fn compute(
-		&self,
-		ctx: &Context<'_>,
-		opt: &Options,
-		txn: &Transaction,
-		doc: Option<&Value>,
-	) -> Result<Value, Error> {
-		let l = self.l.compute(ctx, opt, txn, doc).await?;
+	/// Process this type returning a computed simple Value
+	pub(crate) async fn compute(&self, ctx: &Context<'_>, opt: &Options) -> Result<Value, Error> {
+		let l = self.l.compute(ctx, opt).await?;
 		match self.o {
 			Operator::Or => {
 				if let true = l.is_truthy() {
@@ -101,7 +98,7 @@ impl Expression {
 			}
 			_ => {} // Continue
 		}
-		let r = self.r.compute(ctx, opt, txn, doc).await?;
+		let r = self.r.compute(ctx, opt).await?;
 		match self.o {
 			Operator::Or => fnc::operate::or(l, r),
 			Operator::And => fnc::operate::and(l, r),
@@ -137,6 +134,7 @@ impl Expression {
 			Operator::NoneInside => fnc::operate::inside_none(&l, &r),
 			Operator::Outside => fnc::operate::outside(&l, &r),
 			Operator::Intersects => fnc::operate::intersects(&l, &r),
+			Operator::Matches(_) => fnc::operate::matches(ctx, self).await,
 			_ => unreachable!(),
 		}
 	}
@@ -149,16 +147,19 @@ impl fmt::Display for Expression {
 }
 
 pub fn expression(i: &str) -> IResult<&str, Expression> {
-	alt((
-		unary_expression,
-		binary_expression,
-	))
+	alt((unary_expression, binary_expression))
 }
 
 pub fn unary_expression(i: &str) -> IResult<&str, Expression> {
 	let (i, o) = unary_operator(i)?;
 	let (i, v) = single(i)?;
-	Ok((i, Expression::Unary{o, v}))
+	Ok((
+		i,
+		Expression::Unary {
+			o,
+			v,
+		},
+	))
 }
 
 pub fn binary_expression(i: &str) -> IResult<&str, Expression> {

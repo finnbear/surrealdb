@@ -1,13 +1,13 @@
 use crate::cnf::ID_CHARS;
 use crate::ctx::Context;
 use crate::dbs::Options;
-use crate::dbs::Transaction;
 use crate::err::Error;
 use crate::sql::array::{array, Array};
 use crate::sql::error::IResult;
 use crate::sql::escape::escape_rid;
 use crate::sql::ident::ident_raw;
 use crate::sql::number::integer;
+use crate::sql::number::Number;
 use crate::sql::object::{object, Object};
 use crate::sql::strand::Strand;
 use crate::sql::thing::Thing;
@@ -18,10 +18,12 @@ use nom::branch::alt;
 use nom::combinator::map;
 use serde::{Deserialize, Serialize};
 use std::fmt::{self, Display, Formatter};
+use ulid::Ulid;
 
-#[derive(Clone, Debug, Eq, PartialEq, PartialOrd, Serialize, Deserialize, Hash)]
+#[derive(Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Serialize, Deserialize, Hash)]
 pub enum Id {
 	Number(i64),
+	/// Invariant: Doesn't contain NUL bytes.
 	String(String),
 	Array(Array),
 	Object(Object),
@@ -105,6 +107,16 @@ impl From<Vec<Value>> for Id {
 	}
 }
 
+impl From<Number> for Id {
+	fn from(v: Number) -> Self {
+		match v {
+			Number::Int(v) => v.into(),
+			Number::Float(v) => v.to_string().into(),
+			Number::Decimal(v) => v.to_string().into(),
+		}
+	}
+}
+
 impl From<Thing> for Id {
 	fn from(v: Thing) -> Self {
 		v.id
@@ -115,6 +127,20 @@ impl Id {
 	/// Generate a new random ID
 	pub fn rand() -> Self {
 		Self::String(nanoid!(20, &ID_CHARS))
+	}
+	/// Generate a new random ULID
+	pub fn ulid() -> Self {
+		Self::String(Ulid::new().to_string())
+	}
+	/// Generate a new random UUID
+	#[cfg(uuid_unstable)]
+	pub fn uuid() -> Self {
+		Self::String(Uuid::new_v7().to_raw())
+	}
+	/// Generate a new random UUID
+	#[cfg(not(uuid_unstable))]
+	pub fn uuid() -> Self {
+		Self::String(Uuid::new_v4().to_raw())
 	}
 	/// Convert the Id to a raw String
 	pub fn to_raw(&self) -> String {
@@ -139,21 +165,16 @@ impl Display for Id {
 }
 
 impl Id {
-	pub(crate) async fn compute(
-		&self,
-		ctx: &Context<'_>,
-		opt: &Options,
-		txn: &Transaction,
-		doc: Option<&Value>,
-	) -> Result<Id, Error> {
+	/// Process this type returning a computed simple Value
+	pub(crate) async fn compute(&self, ctx: &Context<'_>, opt: &Options) -> Result<Id, Error> {
 		match self {
 			Id::Number(v) => Ok(Id::Number(*v)),
 			Id::String(v) => Ok(Id::String(v.clone())),
-			Id::Object(v) => match v.compute(ctx, opt, txn, doc).await? {
+			Id::Object(v) => match v.compute(ctx, opt).await? {
 				Value::Object(v) => Ok(Id::Object(v)),
 				_ => unreachable!(),
 			},
-			Id::Array(v) => match v.compute(ctx, opt, txn, doc).await? {
+			Id::Array(v) => match v.compute(ctx, opt).await? {
 				Value::Array(v) => Ok(Id::Array(v)),
 				_ => unreachable!(),
 			},

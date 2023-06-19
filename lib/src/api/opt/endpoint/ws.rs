@@ -1,12 +1,13 @@
-use crate::api::engines::remote::ws::Client;
-use crate::api::engines::remote::ws::Ws;
-use crate::api::engines::remote::ws::Wss;
+use crate::api::engine::remote::ws::Client;
+use crate::api::engine::remote::ws::Ws;
+use crate::api::engine::remote::ws::Wss;
 use crate::api::err::Error;
 use crate::api::opt::Endpoint;
 use crate::api::opt::IntoEndpoint;
 #[cfg(any(feature = "native-tls", feature = "rustls"))]
 use crate::api::opt::Tls;
 use crate::api::Result;
+use crate::dbs::Level;
 use std::net::SocketAddr;
 use url::Url;
 
@@ -20,6 +21,9 @@ impl IntoEndpoint<Ws> for &str {
 			strict: false,
 			#[cfg(any(feature = "native-tls", feature = "rustls"))]
 			tls_config: None,
+			auth: Level::No,
+			username: String::new(),
+			password: String::new(),
 		})
 	}
 }
@@ -34,6 +38,9 @@ impl IntoEndpoint<Ws> for SocketAddr {
 			strict: false,
 			#[cfg(any(feature = "native-tls", feature = "rustls"))]
 			tls_config: None,
+			auth: Level::No,
+			username: String::new(),
+			password: String::new(),
 		})
 	}
 }
@@ -48,6 +55,9 @@ impl IntoEndpoint<Ws> for String {
 			strict: false,
 			#[cfg(any(feature = "native-tls", feature = "rustls"))]
 			tls_config: None,
+			auth: Level::No,
+			username: String::new(),
+			password: String::new(),
 		})
 	}
 }
@@ -62,6 +72,9 @@ impl IntoEndpoint<Wss> for &str {
 			strict: false,
 			#[cfg(any(feature = "native-tls", feature = "rustls"))]
 			tls_config: None,
+			auth: Level::No,
+			username: String::new(),
+			password: String::new(),
 		})
 	}
 }
@@ -76,6 +89,9 @@ impl IntoEndpoint<Wss> for SocketAddr {
 			strict: false,
 			#[cfg(any(feature = "native-tls", feature = "rustls"))]
 			tls_config: None,
+			auth: Level::No,
+			username: String::new(),
+			password: String::new(),
 		})
 	}
 }
@@ -90,6 +106,9 @@ impl IntoEndpoint<Wss> for String {
 			strict: false,
 			#[cfg(any(feature = "native-tls", feature = "rustls"))]
 			tls_config: None,
+			auth: Level::No,
+			username: String::new(),
+			password: String::new(),
 		})
 	}
 }
@@ -104,9 +123,9 @@ where
 
 	fn into_endpoint(self) -> Result<Endpoint> {
 		let (address, config) = self;
-		let mut address = address.into_endpoint()?;
-		address.tls_config = Some(Tls::Native(config));
-		Ok(address)
+		let mut endpoint = address.into_endpoint()?;
+		endpoint.tls_config = Some(Tls::Native(config));
+		Ok(endpoint)
 	}
 }
 
@@ -120,8 +139,8 @@ where
 
 	fn into_endpoint(self) -> Result<Endpoint> {
 		let (address, config) = self;
-		let mut address = address.into_endpoint()?;
-		address.tls_config = Some(Tls::Rust(config));
-		Ok(address)
+		let mut endpoint = address.into_endpoint()?;
+		endpoint.tls_config = Some(Tls::Rust(config));
+		Ok(endpoint)
 	}
 }

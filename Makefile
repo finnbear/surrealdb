@@ -1,3 +1,5 @@
+DEV_FEATURES := --no-default-features --features storage-mem,http,scripting
+
 .PHONY: default
 default:
 	@echo "Choose a Makefile target:"
@@ -10,7 +12,7 @@ setup:
 
 .PHONY: docs
 docs:
-	cargo doc --open --no-deps --package surrealdb --features rustls,protocol-ws,protocol-http,kv-mem,kv-indxdb,kv-rocksdb,kv-tikv,http,scripting,parallel
+	cargo doc --open --no-deps --package surrealdb --features rustls,native-tls,protocol-ws,protocol-http,kv-mem,kv-indxdb,kv-speedb,kv-rocksdb,kv-tikv,http,scripting
 
 .PHONY: test
 test:
@@ -26,13 +28,17 @@ check:
 clean:
 	cargo clean
 
+.PHONY: bench
+bench:
+	cargo bench --package surrealdb --no-default-features --features kv-mem,http,scripting
+
 .PHONY: serve
 serve:
-	cargo run -- start --log trace --user root --pass root memory
+	cargo run $(DEV_FEATURES) -- start --log trace --user root --pass root memory
 
 .PHONY: sql
 sql:
-	cargo run -- sql --conn http://0.0.0.0:8000 --user root --pass root --ns test --db test
+	cargo run $(DEV_FEATURES) -- sql --conn ws://0.0.0.0:8000 --user root --pass root --ns test --db test --multi --pretty
 
 .PHONY: quick
 quick:

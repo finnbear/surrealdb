@@ -2,6 +2,8 @@
 
 This file contains a set of instructions for building SurrealDB on a number of different platforms. Currently, SurrealDB is built for release automatically in a [Github Actions](https://github.com/surrealdb/surrealdb/actions) continuous-integration environment, on macOS, Ubuntu, and Windows.
 
+While installing `rustup`, use the default (`stable`) release channel of Rust for best results. If you already have a different release channel, you can run `rustup override set stable` from within the top level directory of this repository.
+
 <!-- -------------------------------------------------- -->
 <!-- -------------------------------------------------- -->
 <!-- -------------------------------------------------- -->
@@ -15,7 +17,7 @@ This file contains a set of instructions for building SurrealDB on a number of d
 ### ✅ Compile for `apple-darwin` (macOS)
 ```bash
 # Setup
-brew install cmake
+brew install cmake protobuf
 rustup target add x86_64-apple-darwin
 rustup target add aarch64-apple-darwin
 # Compile for x86_64-apple-darwin
@@ -40,7 +42,8 @@ apt-get -y install \
 	musl-tools \
 	libssl-dev \
 	pkg-config \
-	build-essential
+	build-essential \
+	protobuf-compiler
 # Install rustlang and cargo
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 source "$HOME/.cargo/env"
@@ -66,7 +69,8 @@ apt-get -y install \
 	musl-tools \
 	libssl-dev \
 	pkg-config \
-	build-essential
+	build-essential \
+	protobuf-compiler
 # Install rustlang and cargo
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 source "$HOME/.cargo/env"
@@ -80,7 +84,7 @@ cargo build --release --locked --target x86_64-unknown-linux-gnu
 <sub>This does not yet build successfully</sub>
 ```bash
 # Setup
-brew install cmake mingw-w64
+brew install cmake mingw-w64 protobuf
 rustup target add x86_64-pc-windows-gnu
 # Compile for x86_64-w64-mingw32-gcc
 export CC_x86_64_pc_windows_gnu=x86_64-w64-mingw32-gcc
@@ -121,7 +125,8 @@ apt-get -y install \
 	musl-tools \
 	libssl-dev \
 	pkg-config \
-	build-essential
+	build-essential \
+	protobuf-compiler
 # Install rustlang and cargo
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 source "$HOME/.cargo/env"
@@ -146,6 +151,7 @@ apt-get -y install \
 	libssl-dev \
 	pkg-config \
 	build-essential \
+	protobuf-compiler \
 	libc6-dev-amd64-cross \
 	crossbuild-essential-amd64
 # Install rustlang and cargo
@@ -230,7 +236,8 @@ apt-get -y install \
 	musl-tools \
 	libssl-dev \
 	pkg-config \
-	build-essential
+	build-essential \
+	protobuf-compiler
 # Install rustlang and cargo
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 source "$HOME/.cargo/env"
@@ -255,6 +262,7 @@ apt-get -y install \
 	libssl-dev \
 	pkg-config \
 	build-essential \
+	protobuf-compiler \
 	libc6-dev-arm64-cross \
 	crossbuild-essential-arm64
 # Install rustlang and cargo
@@ -295,6 +303,7 @@ apt-get -y install \
 	libssl-dev \
 	pkg-config \
 	build-essential \
+	protobuf-compiler \
 	g++-arm-linux-gnueabihf \
 	gcc-arm-linux-gnueabihf
 # Install rustlang and cargo

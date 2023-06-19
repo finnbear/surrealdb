@@ -2,8 +2,6 @@ use crate::api::conn::Method;
 use crate::api::conn::Param;
 use crate::api::conn::Router;
 use crate::api::Connection;
-use crate::api::Error;
-use crate::api::ExtraFeatures;
 use crate::api::Result;
 use std::future::Future;
 use std::future::IntoFuture;
@@ -11,6 +9,7 @@ use std::pin::Pin;
 
 /// A session invalidate future
 #[derive(Debug)]
+#[must_use = "futures do nothing unless you `.await` or poll them"]
 pub struct Invalidate<'r, C: Connection> {
 	pub(super) router: Result<&'r Router<C>>,
 }
@@ -25,11 +24,8 @@ where
 	fn into_future(self) -> Self::IntoFuture {
 		Box::pin(async {
 			let router = self.router?;
-			if !router.features.contains(&ExtraFeatures::Auth) {
-				return Err(Error::AuthNotSupported.into());
-			}
 			let mut conn = Client::new(Method::Invalidate);
-			conn.execute(router, Param::new(Vec::new())).await
+			conn.execute_unit(router, Param::new(Vec::new())).await
 		})
 	}
 }

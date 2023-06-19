@@ -21,19 +21,44 @@ async fn strict_mode_no_namespace() -> Result<(), Error> {
 	assert_eq!(res.len(), 5);
 	//
 	let tmp = res.remove(0).result;
-	assert!(matches!(tmp.err(), Some(Error::NsNotFound)));
+	assert!(matches!(
+		tmp.err(),
+		Some(Error::NsNotFound {
+			value: _
+		})
+	));
 	//
 	let tmp = res.remove(0).result;
-	assert!(matches!(tmp.err(), Some(Error::NsNotFound)));
+	assert!(matches!(
+		tmp.err(),
+		Some(Error::NsNotFound {
+			value: _
+		})
+	));
 	//
 	let tmp = res.remove(0).result;
-	assert!(matches!(tmp.err(), Some(Error::NsNotFound)));
+	assert!(matches!(
+		tmp.err(),
+		Some(Error::NsNotFound {
+			value: _
+		})
+	));
 	//
 	let tmp = res.remove(0).result;
-	assert!(matches!(tmp.err(), Some(Error::NsNotFound)));
+	assert!(matches!(
+		tmp.err(),
+		Some(Error::NsNotFound {
+			value: _
+		})
+	));
 	//
 	let tmp = res.remove(0).result;
-	assert!(matches!(tmp.err(), Some(Error::NsNotFound)));
+	assert!(matches!(
+		tmp.err(),
+		Some(Error::NsNotFound {
+			value: _
+		})
+	));
 	//
 	Ok(())
 }
@@ -57,16 +82,36 @@ async fn strict_mode_no_database() -> Result<(), Error> {
 	assert!(tmp.is_ok());
 	//
 	let tmp = res.remove(0).result;
-	assert!(matches!(tmp.err(), Some(Error::DbNotFound)));
+	assert!(matches!(
+		tmp.err(),
+		Some(Error::DbNotFound {
+			value: _
+		})
+	));
 	//
 	let tmp = res.remove(0).result;
-	assert!(matches!(tmp.err(), Some(Error::DbNotFound)));
+	assert!(matches!(
+		tmp.err(),
+		Some(Error::DbNotFound {
+			value: _
+		})
+	));
 	//
 	let tmp = res.remove(0).result;
-	assert!(matches!(tmp.err(), Some(Error::DbNotFound)));
+	assert!(matches!(
+		tmp.err(),
+		Some(Error::DbNotFound {
+			value: _
+		})
+	));
 	//
 	let tmp = res.remove(0).result;
-	assert!(matches!(tmp.err(), Some(Error::DbNotFound)));
+	assert!(matches!(
+		tmp.err(),
+		Some(Error::DbNotFound {
+			value: _
+		})
+	));
 	//
 	Ok(())
 }
@@ -93,13 +138,28 @@ async fn strict_mode_no_table() -> Result<(), Error> {
 	assert!(tmp.is_ok());
 	//
 	let tmp = res.remove(0).result;
-	assert!(matches!(tmp.err(), Some(Error::TbNotFound)));
+	assert!(matches!(
+		tmp.err(),
+		Some(Error::TbNotFound {
+			value: _
+		})
+	));
 	//
 	let tmp = res.remove(0).result;
-	assert!(matches!(tmp.err(), Some(Error::TbNotFound)));
+	assert!(matches!(
+		tmp.err(),
+		Some(Error::TbNotFound {
+			value: _
+		})
+	));
 	//
 	let tmp = res.remove(0).result;
-	assert!(matches!(tmp.err(), Some(Error::TbNotFound)));
+	assert!(matches!(
+		tmp.err(),
+		Some(Error::TbNotFound {
+			value: _
+		})
+	));
 	//
 	Ok(())
 }
@@ -172,7 +232,7 @@ async fn loose_mode_all_ok() -> Result<(), Error> {
 	let tmp = res.remove(0).result?;
 	let val = Value::parse(
 		"{
-			ns: { test: 'DEFINE NAMESPACE test' },
+			namespaces: { test: 'DEFINE NAMESPACE test' },
 		}",
 	);
 	assert_eq!(tmp, val);
@@ -180,9 +240,9 @@ async fn loose_mode_all_ok() -> Result<(), Error> {
 	let tmp = res.remove(0).result?;
 	let val = Value::parse(
 		"{
-			db: { test: 'DEFINE DATABASE test' },
-			nl: {},
-			nt: {},
+			databases: { test: 'DEFINE DATABASE test' },
+			logins: {},
+			tokens: {},
 		}",
 	);
 	assert_eq!(tmp, val);
@@ -190,10 +250,13 @@ async fn loose_mode_all_ok() -> Result<(), Error> {
 	let tmp = res.remove(0).result?;
 	let val = Value::parse(
 		"{
-			dl: {},
-			dt: {},
-			sc: {},
-			tb: { test: 'DEFINE TABLE test SCHEMALESS PERMISSIONS NONE' },
+			analyzers: {},
+			logins: {},
+			tokens: {},
+			functions: {},
+			params: {},
+			scopes: {},
+			tables: { test: 'DEFINE TABLE test SCHEMALESS PERMISSIONS NONE' },
 		}",
 	);
 	assert_eq!(tmp, val);
@@ -201,10 +264,10 @@ async fn loose_mode_all_ok() -> Result<(), Error> {
 	let tmp = res.remove(0).result?;
 	let val = Value::parse(
 		"{
-			ev: {},
-			fd: { extra: 'DEFINE FIELD extra ON test VALUE true' },
-			ft: {},
-			ix: {},
+			events: {},
+			fields: { extra: 'DEFINE FIELD extra ON test VALUE true' },
+			tables: {},
+			indexes: {},
 		}",
 	);
 	assert_eq!(tmp, val);

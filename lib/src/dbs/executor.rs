@@ -15,6 +15,7 @@ use crate::sql::statement::Statement;
 use crate::sql::value::Value;
 use futures::lock::Mutex;
 use std::sync::Arc;
+use tracing::instrument;
 use trice::Instant;
 
 pub(crate) struct Executor<'a> {
@@ -32,13 +33,11 @@ impl<'a> Executor<'a> {
 		}
 	}
 
-	fn txn(&self) -> Transaction {
-		match self.txn.as_ref() {
-			Some(txn) => txn.clone(),
-			None => unreachable!(),
-		}
-	}
-
+	/// # Return
+	/// - true if a new transaction has begun
+	/// - false if
+	///   - couldn't create transaction (sets err flag)
+	///   - a transaction has already begun
 	async fn begin(&mut self, write: bool) -> bool {
 		match self.txn.as_ref() {
 			Some(_) => false,
@@ -55,40 +54,41 @@ impl<'a> Executor<'a> {
 		}
 	}
 
-	async fn commit(&mut self, local: bool) {
+	/// # Return
+	///
+	/// An `Err` if the transaction could not be commited;
+	/// otherwise returns `Ok`.
+	async fn commit(&mut self, local: bool) -> Result<(), Error> {
 		if local {
-			if let Some(txn) = self.txn.as_ref() {
-				match &self.err {
-					true => {
-						let txn = txn.clone();
-						let mut txn = txn.lock().await;
-						if txn.cancel().await.is_err() {
-							self.err = true;
-						}
-						self.txn = None;
-					}
-					false => {
-						let txn = txn.clone();
-						let mut txn = txn.lock().await;
-						if txn.commit().await.is_err() {
-							self.err = true;
-						}
-						self.txn = None;
-					}
+			// Extract the transaction
+			if let Some(txn) = self.txn.take() {
+				let mut txn = txn.lock().await;
+				if self.err {
+					// Cancel and ignore any error because the error flag was
+					// already set
+					let _ = txn.cancel().await;
+				} else if let Err(e) = txn.commit().await {
+					// Transaction failed to commit
+					//
+					// TODO: Not all commit errors definitively mean
+					// the transaction didn't commit. Detect that and tell
+					// the user.
+					self.err = true;
+					return Err(e);
 				}
 			}
 		}
+		Ok(())
 	}
 
 	async fn cancel(&mut self, local: bool) {
 		if local {
-			if let Some(txn) = self.txn.as_ref() {
-				let txn = txn.clone();
+			// Extract the transaction
+			if let Some(txn) = self.txn.take() {
 				let mut txn = txn.lock().await;
 				if txn.cancel().await.is_err() {
 					self.err = true;
 				}
-				self.txn = None;
 			}
 		}
 	}
@@ -100,12 +100,17 @@ impl<'a> Executor<'a> {
 		}
 	}
 
-	fn buf_commit(&self, v: Response) -> Response {
+	fn buf_commit(&self, v: Response, commit_error: &Option<Error>) -> Response {
 		match &self.err {
 			true => Response {
 				time: v.time,
 				result: match v.result {
-					Ok(_) => Err(Error::QueryNotExecuted),
+					Ok(_) => Err(commit_error
+						.as_ref()
+						.map(|e| Error::QueryNotExecutedDetail {
+							message: e.to_string(),
+						})
+						.unwrap_or(Error::QueryNotExecuted)),
 					Err(e) => Err(e),
 				},
 			},
@@ -116,17 +121,18 @@ impl<'a> Executor<'a> {
 	async fn set_ns(&self, ctx: &mut Context<'_>, opt: &mut Options, ns: &str) {
 		let mut session = ctx.value("session").unwrap_or(&Value::None).clone();
 		session.put(NS.as_ref(), ns.to_owned().into());
-		ctx.add_value(String::from("session"), session);
+		ctx.add_value("session", session);
 		opt.ns = Some(ns.into());
 	}
 
 	async fn set_db(&self, ctx: &mut Context<'_>, opt: &mut Options, db: &str) {
 		let mut session = ctx.value("session").unwrap_or(&Value::None).clone();
 		session.put(DB.as_ref(), db.to_owned().into());
-		ctx.add_value(String::from("session"), session);
+		ctx.add_value("session", session);
 		opt.db = Some(db.into());
 	}
 
+	#[instrument(name = "executor", skip_all)]
 	pub async fn execute(
 		&mut self,
 		mut ctx: Context<'_>,
@@ -138,7 +144,7 @@ impl<'a> Executor<'a> {
 		// Initialise array of responses
 		let mut out: Vec<Response> = vec![];
 		// Process all statements in query
-		for stm in qry.iter() {
+		for stm in qry.into_iter() {
 			// Log the statement
 			debug!(target: LOG, "Executing: {}", stm);
 			// Reset errors
@@ -147,23 +153,27 @@ impl<'a> Executor<'a> {
 			}
 			// Get the statement start time
 			let now = Instant::now();
+			// Check if this is a RETURN statement
+			let clr = matches!(stm, Statement::Output(_));
 			// Process a single statement
 			let res = match stm {
 				// Specify runtime options
-				Statement::Option(stm) => {
+				Statement::Option(mut stm) => {
 					// Selected DB?
 					opt.needs(Level::Db)?;
 					// Allowed to run?
 					opt.check(Level::Db)?;
+					// Convert to uppercase
+					stm.name.0.make_ascii_uppercase();
 					// Process the option
-					match &stm.name.to_uppercase()[..] {
-						"FIELDS" => opt = opt.fields(stm.what),
-						"EVENTS" => opt = opt.events(stm.what),
-						"TABLES" => opt = opt.tables(stm.what),
-						"IMPORT" => opt = opt.import(stm.what),
-						"FORCE" => opt = opt.force(stm.what),
+					opt = match stm.name.0.as_str() {
+						"FIELDS" => opt.fields(stm.what),
+						"EVENTS" => opt.events(stm.what),
+						"TABLES" => opt.tables(stm.what),
+						"IMPORT" => opt.import(stm.what),
+						"FORCE" => opt.force(stm.what),
 						_ => break,
-					}
+					};
 					// Continue
 					continue;
 				}
@@ -177,15 +187,15 @@ impl<'a> Executor<'a> {
 					self.cancel(true).await;
 					buf = buf.into_iter().map(|v| self.buf_cancel(v)).collect();
 					out.append(&mut buf);
-					self.txn = None;
+					debug_assert!(self.txn.is_none(), "cancel(true) should have unset txn");
 					continue;
 				}
 				// Commit a running transaction
 				Statement::Commit(_) => {
-					self.commit(true).await;
-					buf = buf.into_iter().map(|v| self.buf_commit(v)).collect();
+					let commit_error = self.commit(true).await.err();
+					buf = buf.into_iter().map(|v| self.buf_commit(v, &commit_error)).collect();
 					out.append(&mut buf);
-					self.txn = None;
+					debug_assert!(self.txn.is_none(), "commit(true) should have unset txn");
 					continue;
 				}
 				// Switch to a different NS or DB
@@ -221,7 +231,7 @@ impl<'a> Executor<'a> {
 					Ok(Value::None)
 				}
 				// Process param definition statements
-				Statement::Set(stm) => {
+				Statement::Set(mut stm) => {
 					// Create a transaction
 					let loc = self.begin(stm.writeable()).await;
 					// Check the transaction
@@ -233,24 +243,35 @@ impl<'a> Executor<'a> {
 							// Check if the variable is a protected variable
 							let res = match PROTECTED_PARAM_NAMES.contains(&stm.name.as_str()) {
 								// The variable isn't protected and can be stored
-								false => stm.compute(&ctx, &opt, &self.txn(), None).await,
+								false => {
+									ctx.add_transaction(self.txn.as_ref());
+									stm.compute(&ctx, &opt).await
+								}
 								// The user tried to set a protected variable
 								true => Err(Error::InvalidParam {
-									name: stm.name.to_owned(),
+									// Move the parameter name, as we no longer need it
+									name: std::mem::take(&mut stm.name),
 								}),
 							};
 							// Check the statement
 							match res {
 								Ok(val) => {
+									// Check if writeable
+									let writeable = stm.writeable();
 									// Set the parameter
-									ctx.add_value(stm.name.to_owned(), val);
-									// Finalise transaction
-									match stm.writeable() {
-										true => self.commit(loc).await,
-										false => self.cancel(loc).await,
+									ctx.add_value(stm.name, val);
+									// Finalise transaction, returning nothing unless it couldn't commit
+									if writeable {
+										match self.commit(loc).await {
+											Err(e) => Err(Error::QueryNotExecutedDetail {
+												message: e.to_string(),
+											}),
+											Ok(_) => Ok(Value::None),
+										}
+									} else {
+										self.cancel(loc).await;
+										Ok(Value::None)
 									}
-									// Return nothing
-									Ok(Value::None)
 								}
 								Err(err) => {
 									// Cancel transaction
@@ -283,8 +304,9 @@ impl<'a> Executor<'a> {
 										// Set statement timeout
 										let mut ctx = Context::new(&ctx);
 										ctx.add_timeout(timeout);
+										ctx.add_transaction(self.txn.as_ref());
 										// Process the statement
-										let res = stm.compute(&ctx, &opt, &self.txn(), None).await;
+										let res = stm.compute(&ctx, &opt).await;
 										// Catch statement timeout
 										match ctx.is_timedout() {
 											true => Err(Error::QueryTimedout),
@@ -292,53 +314,57 @@ impl<'a> Executor<'a> {
 										}
 									}
 									// There is no timeout clause
-									None => stm.compute(&ctx, &opt, &self.txn(), None).await,
+									None => {
+										ctx.add_transaction(self.txn.as_ref());
+										stm.compute(&ctx, &opt).await
+									}
 								};
-								// Finalise transaction
-								match &res {
-									Ok(_) => match stm.writeable() {
-										true => self.commit(loc).await,
-										false => self.cancel(loc).await,
-									},
-									Err(_) => self.cancel(loc).await,
+								// Catch global timeout
+								let res = match ctx.is_timedout() {
+									true => Err(Error::QueryTimedout),
+									false => res,
 								};
-								// Return the result
-								res
+								// Finalise transaction and return the result.
+								if res.is_ok() && stm.writeable() {
+									if let Err(e) = self.commit(loc).await {
+										// The commit failed
+										Err(Error::QueryNotExecutedDetail {
+											message: e.to_string(),
+										})
+									} else {
+										// Successful, committed result
+										res
+									}
+								} else {
+									self.cancel(loc).await;
+
+									// An error
+									res
+								}
 							}
 						}
 					}
 				},
 			};
-			// Get the statement end time
-			let dur = now.elapsed();
 			// Produce the response
-			let res = match res {
-				Ok(v) => Response {
-					time: dur,
-					result: Ok(v),
-				},
-				Err(e) => {
-					// Produce the response
-					let res = Response {
-						time: dur,
-						result: Err(e),
-					};
-					// Mark the error
+			let res = Response {
+				// Get the statement end time
+				time: now.elapsed(),
+				// TODO: Replace with `inspect_err` once stable.
+				result: res.map_err(|e| {
+					// Mark the error.
 					self.err = true;
-					// Return
-					res
-				}
+					e
+				}),
 			};
 			// Output the response
-			match self.txn {
-				Some(_) => match stm {
-					Statement::Output(_) => {
-						buf.clear();
-						buf.push(res);
-					}
-					_ => buf.push(res),
-				},
-				None => out.push(res),
+			if self.txn.is_some() {
+				if clr {
+					buf.clear();
+				}
+				buf.push(res);
+			} else {
+				out.push(res)
 			}
 		}
 		// Return responses

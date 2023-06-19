@@ -21,26 +21,34 @@ macro_rules! get_cfg {
 	)
 }
 
-/// Parses a set of SurrealQL statements
-///
-/// # Examples
-///
-/// ```no_run
-/// # use surrealdb::sql;
-/// # fn main() -> surrealdb::Result<()> {
-/// let query = sql! {
-///     LET $name = "Tobie";
-///     SELECT * FROM user WHERE name = $name;
-/// };
-/// # Ok(())
-/// # }
-/// ```
-#[macro_export]
-macro_rules! sql {
-	($($query:tt)*) => {
-		match $crate::sql::parse(stringify!($($query)*)) {
-			Ok(v) => v,
-			Err(e) => { return Err(e.into()); },
+#[cfg(feature = "scripting")]
+macro_rules! throw {
+	($ctx:expr,$e:ident) => {
+		js::Exception::from_message($ctx, &$e.to_string())
+			.map(js::Exception::throw)
+			.unwrap_or(js::Error::Exception)
+		/*
+		 * TODO: add line and file back in later
+		js::Error::Exception {
+			line: line!() as i32,
+			message: $e.to_string(),
+			file: file!().to_owned(),
+			stack: "".to_owned(),
 		}
+		*/
+	};
+	($ctx:expr,$str:expr) => {
+		js::Exception::from_message($ctx, &$str)
+			.map(js::Exception::throw)
+			.unwrap_or(js::Error::Exception)
+		/*
+		 * TODO: add line and file back in later
+		js::Error::Exception {
+			line: line!() as i32,
+			message: $str.to_owned(),
+			file: file!().to_owned(),
+			stack: "".to_owned(),
+		}
+		*/
 	};
 }

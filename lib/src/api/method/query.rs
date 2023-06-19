@@ -3,10 +3,10 @@ use crate::api::conn::Param;
 use crate::api::conn::Router;
 use crate::api::err::Error;
 use crate::api::opt;
-use crate::api::opt::from_json;
 use crate::api::Connection;
 use crate::api::Result;
 use crate::sql;
+use crate::sql::to_value;
 use crate::sql::Array;
 use crate::sql::Object;
 use crate::sql::Statement;
@@ -16,7 +16,6 @@ use crate::sql::Value;
 use indexmap::IndexMap;
 use serde::de::DeserializeOwned;
 use serde::Serialize;
-use serde_json::json;
 use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::future::Future;
@@ -26,6 +25,7 @@ use std::pin::Pin;
 
 /// A query future
 #[derive(Debug)]
+#[must_use = "futures do nothing unless you `.await` or poll them"]
 pub struct Query<'r, C: Connection> {
 	pub(super) router: Result<&'r Router<C>>,
 	pub(super) query: Vec<Result<Vec<Statement>>>,
@@ -74,8 +74,8 @@ where
 	///
 	/// # #[tokio::main]
 	/// # async fn main() -> surrealdb::Result<()> {
-	/// # let db = surrealdb::engines::any::connect("mem://").await?;
-	/// let response = db.query(sql!(CREATE user SET name = $name))
+	/// # let db = surrealdb::engine::any::connect("mem://").await?;
+	/// let response = db.query("CREATE user SET name = $name")
 	///     .bind(("name", "John Doe"))
 	///     .await?;
 	/// # Ok(())
@@ -95,8 +95,8 @@ where
 	///
 	/// # #[tokio::main]
 	/// # async fn main() -> surrealdb::Result<()> {
-	/// # let db = surrealdb::engines::any::connect("mem://").await?;
-	/// let response = db.query(sql!(CREATE user SET name = $name))
+	/// # let db = surrealdb::engine::any::connect("mem://").await?;
+	/// let response = db.query("CREATE user SET name = $name")
 	///     .bind(User {
 	///         name: "John Doe",
 	///     })
@@ -106,18 +106,24 @@ where
 	/// ```
 	pub fn bind(mut self, bindings: impl Serialize) -> Self {
 		if let Ok(current) = &mut self.bindings {
-			let mut bindings = from_json(json!(bindings));
-			if let Value::Array(Array(array)) = &mut bindings {
-				if let [Value::Strand(Strand(key)), value] = &mut array[..] {
-					let mut map = BTreeMap::new();
-					map.insert(mem::take(key), mem::take(value));
-					bindings = map.into();
+			match to_value(bindings) {
+				Ok(mut bindings) => {
+					if let Value::Array(Array(array)) = &mut bindings {
+						if let [Value::Strand(Strand(key)), value] = &mut array[..] {
+							let mut map = BTreeMap::new();
+							map.insert(mem::take(key), mem::take(value));
+							bindings = map.into();
+						}
+					}
+					match &mut bindings {
+						Value::Object(Object(map)) => current.append(map),
+						_ => {
+							self.bindings = Err(Error::InvalidBindings(bindings).into());
+						}
+					}
 				}
-			}
-			match &mut bindings {
-				Value::Object(Object(map)) => current.append(map),
-				_ => {
-					self.bindings = Err(Error::InvalidBindings(bindings).into());
+				Err(error) => {
+					self.bindings = Err(error.into());
 				}
 			}
 		}
@@ -153,17 +159,17 @@ impl Response {
 	///
 	/// # #[tokio::main]
 	/// # async fn main() -> surrealdb::Result<()> {
-	/// # let db = surrealdb::engines::any::connect("mem://").await?;
+	/// # let db = surrealdb::engine::any::connect("mem://").await?;
 	/// #
 	/// let mut response = db
 	///     // Get `john`'s details
-	///     .query(sql!(SELECT * FROM user:john))
+	///     .query("SELECT * FROM user:john")
 	///     // List all users whose first name is John
-	///     .query(sql!(SELECT * FROM user WHERE name.first = "John"))
+	///     .query("SELECT * FROM user WHERE name.first = 'John'")
 	///     // Get John's address
-	///     .query(sql!(SELECT address FROM user:john))
+	///     .query("SELECT address FROM user:john")
 	///     // Get all users' addresses
-	///     .query(sql!(SELECT address FROM user))
+	///     .query("SELECT address FROM user")
 	///     .await?;
 	///
 	/// // Get the first (and only) user from the first query
@@ -180,7 +186,7 @@ impl Response {
 	///
 	/// // You can continue taking more fields on the same response
 	/// // object when extracting individual fields
-	/// let mut response = db.query(sql!(SELECT * FROM user)).await?;
+	/// let mut response = db.query("SELECT * FROM user").await?;
 	///
 	/// // Since the query we want to access is at index 0, we can use
 	/// // a shortcut instead of `response.take((0, "field"))`
@@ -213,8 +219,8 @@ impl Response {
 	///
 	/// # #[tokio::main]
 	/// # async fn main() -> surrealdb::Result<()> {
-	/// # let db = surrealdb::engines::any::connect("mem://").await?;
-	/// # let mut response = db.query(sql!(SELECT * FROM user)).await?;
+	/// # let db = surrealdb::engine::any::connect("mem://").await?;
+	/// # let mut response = db.query("SELECT * FROM user").await?;
 	/// let errors = response.take_errors();
 	/// # Ok(())
 	/// # }
@@ -244,8 +250,8 @@ impl Response {
 	///
 	/// # #[tokio::main]
 	/// # async fn main() -> surrealdb::Result<()> {
-	/// # let db = surrealdb::engines::any::connect("mem://").await?;
-	/// # let response = db.query(sql!(SELECT * FROM user)).await?;
+	/// # let db = surrealdb::engine::any::connect("mem://").await?;
+	/// # let response = db.query("SELECT * FROM user").await?;
 	/// response.check()?;
 	/// # Ok(())
 	/// # }
@@ -275,8 +281,8 @@ impl Response {
 	///
 	/// # #[tokio::main]
 	/// # async fn main() -> surrealdb::Result<()> {
-	/// # let db = surrealdb::engines::any::connect("mem://").await?;
-	/// let response = db.query(sql!(SELECT * FROM user:john; SELECT * FROM user;)).await?;
+	/// # let db = surrealdb::engine::any::connect("mem://").await?;
+	/// let response = db.query("SELECT * FROM user:john; SELECT * FROM user;").await?;
 	///
 	/// assert_eq!(response.num_statements(), 2);
 	/// #
@@ -311,6 +317,10 @@ mod tests {
 	#[test]
 	fn take_from_an_empty_response() {
 		let mut response = Response(Default::default());
+		let value: Value = response.take(0).unwrap();
+		assert!(value.is_none());
+
+		let mut response = Response(Default::default());
 		let option: Option<String> = response.take(0).unwrap();
 		assert!(option.is_none());
 
@@ -328,6 +338,10 @@ mod tests {
 	#[test]
 	fn take_from_empty_records() {
 		let mut response = Response(to_map(vec![Ok(vec![])]));
+		let value: Value = response.take(0).unwrap();
+		assert_eq!(value, Value::Array(Default::default()));
+
+		let mut response = Response(to_map(vec![Ok(vec![])]));
 		let option: Option<String> = response.take(0).unwrap();
 		assert!(option.is_none());
 
@@ -341,6 +355,10 @@ mod tests {
 		let scalar = 265;
 
 		let mut response = Response(to_map(vec![Ok(vec![scalar.into()])]));
+		let value: Value = response.take(0).unwrap();
+		assert_eq!(value, vec![Value::from(scalar)].into());
+
+		let mut response = Response(to_map(vec![Ok(vec![scalar.into()])]));
 		let option: Option<_> = response.take(0).unwrap();
 		assert_eq!(option, Some(scalar));
 
@@ -349,6 +367,10 @@ mod tests {
 		assert_eq!(vec, vec![scalar]);
 
 		let scalar = true;
+
+		let mut response = Response(to_map(vec![Ok(vec![scalar.into()])]));
+		let value: Value = response.take(0).unwrap();
+		assert_eq!(value, vec![Value::from(scalar)].into());
 
 		let mut response = Response(to_map(vec![Ok(vec![scalar.into()])]));
 		let option: Option<_> = response.take(0).unwrap();
@@ -383,10 +405,8 @@ mod tests {
             panic!("query not found");
         };
 		assert_eq!(zero, 0);
-		let Some(one): Option<i32> = response.take(1).unwrap() else {
-            panic!("query not found");
-        };
-		assert_eq!(one, 1);
+		let one: Value = response.take(1).unwrap();
+		assert_eq!(one, vec![Value::from(1)].into());
 	}
 
 	#[test]
@@ -394,14 +414,19 @@ mod tests {
 		let summary = Summary {
 			title: "Lorem Ipsum".to_owned(),
 		};
+		let value = to_value(summary.clone()).unwrap();
 
-		let mut response = Response(to_map(vec![Ok(vec![from_json(json!(summary.clone()))])]));
+		let mut response = Response(to_map(vec![Ok(vec![value.clone()])]));
+		let title: Value = response.take("title").unwrap();
+		assert_eq!(title, vec![Value::from(summary.title.as_str())].into());
+
+		let mut response = Response(to_map(vec![Ok(vec![value.clone()])]));
 		let Some(title): Option<String> = response.take("title").unwrap() else {
             panic!("title not found");
         };
 		assert_eq!(title, summary.title);
 
-		let mut response = Response(to_map(vec![Ok(vec![from_json(json!(summary.clone()))])]));
+		let mut response = Response(to_map(vec![Ok(vec![value])]));
 		let vec: Vec<String> = response.take("title").unwrap();
 		assert_eq!(vec, vec![summary.title]);
 
@@ -409,8 +434,9 @@ mod tests {
 			title: "Lorem Ipsum".to_owned(),
 			body: "Lorem Ipsum Lorem Ipsum".to_owned(),
 		};
+		let value = to_value(article.clone()).unwrap();
 
-		let mut response = Response(to_map(vec![Ok(vec![from_json(json!(article.clone()))])]));
+		let mut response = Response(to_map(vec![Ok(vec![value.clone()])]));
 		let Some(title): Option<String> = response.take("title").unwrap() else {
             panic!("title not found");
         };
@@ -420,13 +446,21 @@ mod tests {
         };
 		assert_eq!(body, article.body);
 
-		let mut response = Response(to_map(vec![Ok(vec![from_json(json!(article.clone()))])]));
+		let mut response = Response(to_map(vec![Ok(vec![value.clone()])]));
 		let vec: Vec<String> = response.take("title").unwrap();
-		assert_eq!(vec, vec![article.title]);
+		assert_eq!(vec, vec![article.title.clone()]);
+
+		let mut response = Response(to_map(vec![Ok(vec![value])]));
+		let value: Value = response.take("title").unwrap();
+		assert_eq!(value, vec![Value::from(article.title)].into());
 	}
 
 	#[test]
 	fn take_partial_records() {
+		let mut response = Response(to_map(vec![Ok(vec![true.into(), false.into()])]));
+		let value: Value = response.take(0).unwrap();
+		assert_eq!(value, vec![Value::from(true), Value::from(false)].into());
+
 		let mut response = Response(to_map(vec![Ok(vec![true.into(), false.into()])]));
 		let vec: Vec<bool> = response.take(0).unwrap();
 		assert_eq!(vec, vec![true, false]);
@@ -452,7 +486,7 @@ mod tests {
 			Err(Error::BackupsNotSupported.into()),
 			Ok(vec![6.into()]),
 			Ok(vec![7.into()]),
-			Err(Error::AuthNotSupported.into()),
+			Err(Error::DuplicateRequestId(0).into()),
 		];
 		let response = Response(to_map(response));
 		let crate::Error::Api(Error::ConnectionUninitialised) = response.check().unwrap_err() else {
@@ -473,14 +507,14 @@ mod tests {
 			Err(Error::BackupsNotSupported.into()),
 			Ok(vec![6.into()]),
 			Ok(vec![7.into()]),
-			Err(Error::AuthNotSupported.into()),
+			Err(Error::DuplicateRequestId(0).into()),
 		];
 		let mut response = Response(to_map(response));
 		let errors = response.take_errors();
 		assert_eq!(response.num_statements(), 8);
 		assert_eq!(errors.len(), 3);
-		let crate::Error::Api(Error::AuthNotSupported) = errors.get(&10).unwrap() else {
-            panic!("index `10` is not `AuthNotSupported`");
+		let crate::Error::Api(Error::DuplicateRequestId(0)) = errors.get(&10).unwrap() else {
+            panic!("index `10` is not `DuplicateRequestId`");
         };
 		let crate::Error::Api(Error::BackupsNotSupported) = errors.get(&7).unwrap() else {
             panic!("index `7` is not `BackupsNotSupported`");
@@ -492,9 +526,7 @@ mod tests {
             panic!("statement not found");
         };
 		assert_eq!(value, 2);
-		let Some(value): Option<i32> = response.take(4).unwrap() else {
-            panic!("statement not found");
-        };
-		assert_eq!(value, 3);
+		let value: Value = response.take(4).unwrap();
+		assert_eq!(value, vec![Value::from(3)].into());
 	}
 }

@@ -1,14 +1,15 @@
 use serde::Deserialize;
 use serde::Serialize;
-use surrealdb::engines::remote::ws::Ws;
+use surrealdb::engine::remote::ws::Ws;
 use surrealdb::opt::auth::Root;
-use surrealdb::sql;
+use surrealdb::sql::thing;
+use surrealdb::sql::Thing;
 use surrealdb::Surreal;
 
 #[derive(Debug, Serialize, Deserialize)]
 #[allow(dead_code)]
 struct User {
-	id: String,
+	id: Thing,
 	name: String,
 	company: String,
 }
@@ -25,16 +26,12 @@ async fn main() -> surrealdb::Result<()> {
 
 	db.use_ns("namespace").use_db("database").await?;
 
-	let sql = sql! {
-		CREATE user
-		SET name = $name,
-			company = $company
-	};
+	let sql = "CREATE user SET name = $name, company = $company";
 
 	let mut results = db
 		.query(sql)
 		.bind(User {
-			id: "john".to_owned(),
+			id: thing("user:john")?,
 			name: "John Doe".to_owned(),
 			company: "ACME Corporation".to_owned(),
 		})
@@ -44,7 +41,7 @@ async fn main() -> surrealdb::Result<()> {
 	let user: Option<User> = results.take(0)?;
 	println!("{user:?}");
 
-	let mut response = db.query(sql!(SELECT * FROM user WHERE name.first = "John")).await?;
+	let mut response = db.query("SELECT * FROM user WHERE name.first = 'John'").await?;
 
 	// print all users:
 	let users: Vec<User> = response.take(0)?;
